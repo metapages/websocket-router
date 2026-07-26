@@ -1,0 +1,8 @@
+{
+    "deno.codeLens.test": false,
+    "deno.lint": true,
+    "deno.unstable": true,
+    "deno.config": "./deno.json",
+    "editor.formatOnSave": false,
+    "deno.enable": true,
+}

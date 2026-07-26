@@ -1,0 +1,30 @@
+# just docs: https://github.com/casey/just
+set shell         := ["bash", "-c"]
+set dotenv-load   := true
+set export        := true
+
+REDIS_URL         := env_var_or_default("REDIS_URL", "redis://redis:6379")
+DENO_DEPLOY_TOKEN := env_var_or_default("DENO_DEPLOY_TOKEN", "")
+
+###########################################################################
+# Formatting
+###########################################################################
+bold              := '\033[1m'
+normal            := '\033[0m'
+green             := "\\e[32m"
+yellow            := "\\e[33m"
+blue              := "\\e[34m"
+magenta           := "\\e[35m"
+grey              := "\\e[90m"
+
+@_help:
+	echo ""
+	just --list --unsorted --list-heading $'🪐 Commands for streaming data workers:\n'
+	echo -e ""
+
+# development stack
+dev +args="":
+	ROOT=$(git rev-parse --show-toplevel) docker compose up {{args}}
+
+down +args="":
+	ROOT=$(git rev-parse --show-toplevel) docker compose down {{args}}
