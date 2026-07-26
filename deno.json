@@ -1,0 +1,25 @@
+{
+  "deploy": {
+    "org": "metapage",
+    "app": "websocket-router",
+    "runtime": {
+      "mode": "dynamic",
+      "entrypoint": "src/serve.ts"
+    }
+  },
+  "tasks": {
+    "dev": "deno run -A --watch ./src/serve.ts",
+    "check": "deno check --allow-import src/serve.ts"
+  },
+  "nodeModulesDir": "auto",
+  "imports": {
+    "redis": "npm:redis@4.5"
+  }
+}
+
+
+
+
+
+
+

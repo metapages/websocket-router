@@ -1,0 +1,123 @@
+version: '2.3'
+
+services:
+  redis:
+    image: redis:latest
+    # uncomment for debugging redis
+    # command: redis-server --loglevel debug
+    ports:
+      - "6379:6379"
+    networks:
+      - app
+
+  deno-service1:
+    image: denoland/deno:alpine-2.0.3
+    working_dir: /app/api/workers/connect.superslides.io
+    command: run --watch --allow-net --allow-env --allow-read=/app test/server1.ts
+    healthcheck:
+      test: PORT=3000 deno run --allow-net --allow-env src/util/healthcheck.ts
+      interval: 3s
+      start_period: 1s
+      timeout: 2s
+      retries: 3
+      start_interval: 2s
+    volumes:
+      - ${ROOT}:/app
+      - .deno/DENO_DIR:/DENO_DIR
+      - .deno/DENO_INSTALL_ROOT:/DENO_INSTALL_ROOT
+      - .deno/tmp:/tmp
+    environment:
+      - "REDIS_URL=${REDIS_URL:-redis://redis:6379}"
+      - "DENO_DIR=/DENO_DIR"
+      - "DENO_INSTALL_ROOT=/DENO_INSTALL_ROOT"
+      - "PATH=$PATH:/DENO_INSTALL_ROOT/bin"
+      - "PORT=3000"
+    depends_on:
+      - redis
+    ports:
+      - "4444:3000"
+    networks:
+      - app
+
+  deno-service2:
+    image: denoland/deno:alpine-2.0.3
+    working_dir: /app/api/workers/connect.superslides.io
+    command: run --watch --allow-net --allow-env --allow-read=/app  test/server2.ts
+    healthcheck:
+      test: PORT=3000 deno run --allow-net --allow-env src/util/healthcheck.ts
+      interval: 3s
+      start_period: 1s
+      timeout: 2s
+      retries: 3
+      start_interval: 2s
+    volumes:
+      - ${ROOT}:/app
+      - .deno/DENO_DIR:/DENO_DIR
+      - .deno/DENO_INSTALL_ROOT:/DENO_INSTALL_ROOT
+      - .deno/tmp:/tmp
+    environment:
+      - "REDIS_URL=${REDIS_URL:-redis://redis:6379}"
+      - "DENO_DIR=/DENO_DIR"
+      - "DENO_INSTALL_ROOT=/DENO_INSTALL_ROOT"
+      - "PATH=$PATH:/DENO_INSTALL_ROOT/bin"
+      - "PORT=3000"
+    depends_on:
+      - redis
+    networks:
+      - app
+
+  deno-service3:
+    image: denoland/deno:alpine-2.0.3
+    working_dir: /app/api/workers/connect.superslides.io
+    command: run --watch --allow-net --allow-env --allow-read=/app test/server3.ts
+    healthcheck:
+      test: PORT=3000 deno run --allow-net --allow-env src/util/healthcheck.ts
+      interval: 3s
+      start_period: 1s
+      timeout: 2s
+      retries: 3
+      start_interval: 2s
+    volumes:
+      - ${ROOT}:/app
+      - .deno/DENO_DIR:/DENO_DIR
+      - .deno/DENO_INSTALL_ROOT:/DENO_INSTALL_ROOT
+      - .deno/tmp:/tmp
+    environment:
+      - "REDIS_URL=${REDIS_URL:-redis://redis:6379}"
+      - "DENO_DIR=/DENO_DIR"
+      - "DENO_INSTALL_ROOT=/DENO_INSTALL_ROOT"
+      - "PATH=$PATH:/DENO_INSTALL_ROOT/bin"
+      - "PORT=3000"
+    depends_on:
+      - redis
+    networks:
+      - app
+      
+      
+  tests:
+    image: denoland/deno:alpine-2.0.3
+    working_dir: /app/api/workers/connect.superslides.io
+    command: test --watch --allow-all test/test.ts
+    volumes:
+      - ${ROOT}:/app
+      - .deno/DENO_DIR:/DENO_DIR
+      - .deno/DENO_INSTALL_ROOT:/DENO_INSTALL_ROOT
+      - .deno/tmp:/tmp
+    environment:
+      - "DENO_DIR=/DENO_DIR"
+      - "DENO_INSTALL_ROOT=/DENO_INSTALL_ROOT"
+      - "PATH=$PATH:/DENO_INSTALL_ROOT/bin"
+      - "PORT=3000"
+    depends_on:
+      deno-service1:
+        condition: service_healthy
+      deno-service2:
+        condition: service_healthy
+      deno-service3:
+        condition: service_healthy
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge

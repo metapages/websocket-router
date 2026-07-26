@@ -1,0 +1,38 @@
+<!-- This is a static file -->
+<!-- served from your routes in server.js -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Public address space for websocket connections"
+    />
+
+    <title>Websocket Router</title>
+
+    <link id="favicon" rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <!-- import the webpage's stylesheet -->
+    <link rel="stylesheet" href="/style.css" />
+
+    <!-- import the webpage's client-side javascript file -->
+    <script type="module" src="/script.js" defer></script>
+  </head>
+  <body>
+    <!-- <header>
+      <h3>⬇️ Scan in the Superslides app</h3>
+    </header> -->
+    <div style="display: flex; flex-direction: row">
+      <div id="qrimage"><%= it.qrcodeImage %></div>
+
+      <div style="display: flex; flex-direction: row; justify-content: flex-start; min-width: 2.5em;">
+        <div id="input" style="min-width: 1em; width: 1em;"></div>
+        <!-- <div id="forwarding">forwarding:</div> -->
+        <div id="output" style="min-width: 1em; width: 1em;"></div>
+      </div>
+    </div>
+    <div id="test"></div>
+  </body>
+</html>

@@ -1,0 +1,4 @@
+.deno
+.env
+node_modules
+deploy.log

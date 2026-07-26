@@ -1,0 +1,49 @@
+/* this file is loaded by index.html and styles the page */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: sans-serif;
+  /* margin: 2em 1em; */
+  /* line-height: 1.5em; */
+  width: 100%;
+  height: 100vh;
+  /* color: #000; */
+  /* background-color: #000; */
+}
+
+/* #display {
+  width: 100%;
+  height: 100vh;
+  border:0;
+  background: black;
+  position: absolute;
+  top:0p;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+} */
+
+.fullscreen {
+  width: 100%;
+  height: 100vh;
+  border:0;
+  /* background: black; */
+  background: transparent;
+  position: absolute;
+  top:0p;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+}
+
+#remainder {
+  overflow:hidden;
+  /* background: black; */
+  background: transparent;
+  top:100vh;
+}
