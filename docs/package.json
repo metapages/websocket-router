@@ -11,5 +11,18 @@
   },
   "devDependencies": {
     "vitepress": "1.6.4"
+  },
+  "// overrides": [
+    "vitepress 1.6.4 asks for vite ^5.4.14, which pulls vite and esbuild",
+    "versions with published advisories. All of them are dev-server issues and",
+    "none of them can reach production, which serves prebuilt static files, but",
+    "they keep Dependabot alerting. vitepress 2 is the supported fix and is",
+    "still alpha, so force the patched versions instead: vite 6 works with",
+    "vitepress 1.6.4 and the docs build, dead-link check and integration tests",
+    "all pass on it. Drop this block when vitepress 2 ships."
+  ],
+  "overrides": {
+    "vite": "^6.4.3",
+    "esbuild": "^0.25.0"
   }
 }

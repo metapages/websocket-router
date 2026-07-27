@@ -23,7 +23,7 @@ export default defineConfig({
       { text: "Reference", link: "/reference/api", activeMatch: "/reference/" },
       {
         text: "Live server ↗",
-        link: "https://websocket-router.metapage.deno.net/",
+        link: "https://router.metapage.io/",
       },
     ],
     sidebar: [

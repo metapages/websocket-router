@@ -3,7 +3,7 @@
 Base URL of the public instance:
 
 ```
-https://websocket-router.metapage.deno.net
+https://router.metapage.io
 ```
 
 CORS is open on every route.
@@ -13,7 +13,7 @@ CORS is open on every route.
 Join a channel. The channel name is the **last path segment** of the URL.
 
 ```
-wss://websocket-router.metapage.deno.net/room-8f2a1c
+wss://router.metapage.io/room-8f2a1c
 ```
 
 |                  |                                              |
@@ -27,7 +27,7 @@ wss://websocket-router.metapage.deno.net/room-8f2a1c
 
 ```js
 const ws = new WebSocket(
-  "wss://websocket-router.metapage.deno.net/room-8f2a1c",
+  "wss://router.metapage.io/room-8f2a1c",
 );
 ```
 
@@ -85,7 +85,7 @@ Broadcast the request body to a channel from any HTTP client.
 
 ```sh
 curl -X POST \
-  https://websocket-router.metapage.deno.net/room-8f2a1c \
+  https://router.metapage.io/room-8f2a1c \
   -d '{"temperature": 21.4}'
 ```
 

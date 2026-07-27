@@ -17,7 +17,7 @@ const channel = crypto.randomUUID();
 
 ```js
 const ws = new WebSocket(
-  `wss://websocket-router.metapage.deno.net/${channel}`,
+  `wss://router.metapage.io/${channel}`,
 );
 
 ws.addEventListener("message", (event) => {
@@ -46,12 +46,12 @@ verbatim to every listener.
 
 ```sh [curl]
 curl -X POST \
-  https://websocket-router.metapage.deno.net/CHANNEL \
+  https://router.metapage.io/CHANNEL \
   -d '{"temperature": 21.4}'
 ```
 
 ```js [fetch]
-await fetch(`https://websocket-router.metapage.deno.net/${channel}`, {
+await fetch(`https://router.metapage.io/${channel}`, {
   method: "POST",
   body: JSON.stringify({ temperature: 21.4 }),
 });
@@ -61,7 +61,7 @@ await fetch(`https://websocket-router.metapage.deno.net/${channel}`, {
 import requests
 
 requests.post(
-    f"https://websocket-router.metapage.deno.net/{channel}",
+    f"https://router.metapage.io/{channel}",
     data='{"temperature": 21.4}',
 )
 ```

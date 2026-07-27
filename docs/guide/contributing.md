@@ -144,6 +144,12 @@ just docs-build   # what CI checks
 Vitepress fails the build on dead internal links, so `just docs-build` is a real
 check rather than a formality.
 
+`docs/package.json` carries an `overrides` block forcing patched `vite` and
+`esbuild`. Vitepress 1.6.4 asks for versions with published advisories — all of
+them dev-server issues that cannot reach production, since production serves
+prebuilt static files — and vitepress 2 is still alpha. Remove the block when it
+ships.
+
 ::: warning `docs/.vitepress/dist` is gitignored build output
 It is built at deploy time and never committed. It still reaches production
 because the `deploy.include` list in `deno.json` names the path explicitly:

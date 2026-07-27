@@ -7,7 +7,7 @@
  * is "did the thing we just shipped come up and route".
  */
 
-const base = Deno.args[0] ?? "https://websocket-router.metapage.deno.net";
+const base = Deno.args[0] ?? "https://router.metapage.io";
 const channel = `deploy-check-${crypto.randomUUID().replaceAll("-", "")}`;
 const wsUrl = new URL(`/${channel}`, base);
 wsUrl.protocol = wsUrl.protocol.replace("http", "ws");

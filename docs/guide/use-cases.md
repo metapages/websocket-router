@@ -64,7 +64,7 @@ are connected. No tunnel, no ngrok, no port forwarding, no inbound firewall rule
 
 ```js
 // on your laptop, deno run -A bridge.ts
-const ws = new WebSocket(`wss://websocket-router.metapage.deno.net/${channel}`);
+const ws = new WebSocket(`wss://router.metapage.io/${channel}`);
 ws.onmessage = async (e) => {
   const result = await runLocally(JSON.parse(e.data));
   ws.send(JSON.stringify(result));

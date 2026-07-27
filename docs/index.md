@@ -53,7 +53,7 @@ features:
 
 ```js
 const ws = new WebSocket(
-  "wss://websocket-router.metapage.deno.net/a-name-nobody-will-guess",
+  "wss://router.metapage.io/a-name-nobody-will-guess",
 );
 
 // Anything any other client sends to that URL arrives here.
@@ -67,7 +67,7 @@ And from anything that can make an HTTP request:
 
 ```sh
 curl -X POST \
-  https://websocket-router.metapage.deno.net/a-name-nobody-will-guess \
+  https://router.metapage.io/a-name-nobody-will-guess \
   -d '{"temperature": 21.4}'
 ```
 

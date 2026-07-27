@@ -82,7 +82,7 @@ fifteen lines.
 ## The channel web page
 
 Opening a channel URL in a browser —
-`https://websocket-router.metapage.deno.net/room-8f2a1c` — serves a small page
+`https://router.metapage.io/room-8f2a1c` — serves a small page
 rather than a websocket. It renders a QR code of the channel URL and acts as a
 [metaframe](/guide/metapages) bridged onto the channel, which makes "scan this
 to connect your phone" a one-step affair.
