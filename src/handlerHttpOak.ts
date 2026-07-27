@@ -10,7 +10,10 @@ import {
 
 import { sendToAll } from "./handlerWs.ts";
 
-const APP_FQDN = Deno.env.get("APP_FQDN");
+// The host encoded into channel-page QR codes. Unset means the public
+// deployment: a missing value used to produce QR codes pointing at
+// `https://undefined/...`, which renders fine and only fails when scanned.
+const APP_FQDN = Deno.env.get("APP_FQDN") || "router.metapage.io";
 
 // Resolve assets relative to this module, not the process working directory,
 // so the server behaves the same when run locally from any directory and when
