@@ -39,6 +39,20 @@ No persistence, no replay, no delivery guarantees, and no authentication beyond
 the secrecy of the channel name. It is a router, not a broker. See
 [Guarantees & limits](docs/reference/guarantees.md).
 
+## Open science infrastructure
+
+This runs as public infrastructure: free to use, and free to walk away from.
+
+A lot of realtime glue in research never gets built, because standing up a server
+is not worth it for one figure, one instrument, or one workshop. The work stays
+on somebody's laptop, or it ends up inside a platform that outlives the grant
+that paid for it. Here a channel is a name — nothing to sign up for, no account
+to be locked out of, no per-seat tier.
+
+Everything needed to run your own copy is in this repository, [MIT licensed](LICENSE), and [self-hosting](docs/guide/self-hosting.md) is a redis and
+a single process. If `router.metapage.io` disappears tomorrow, change the
+hostname and what you built keeps working.
+
 ## Commands
 
 `just` on its own lists everything.
@@ -154,7 +168,11 @@ smoke-tests the live deployment afterwards with `just verify-production`.
 ## Deployment
 
 Hosted on [Deno Deploy](https://console.deno.com/metapage/websocket-router) (not
-Deploy Classic).
+Deploy Classic), against a managed redis configured through `REDIS_URL`.
+
+Because only pub/sub is used, that redis stores nothing. Losing it drops
+in-flight messages and nothing else — there is no state to restore, and no
+migration to run when it is replaced.
 
 ```sh
 just deploy
@@ -173,3 +191,7 @@ overrides the device login and every deploy fails with `AUTH_INVALID_TOKEN`.
 
 `REDIS_URL` (secret) and `APP_FQDN` are set on the application, not baked into a
 deploy. The server throws on startup without `REDIS_URL`.
+
+## License
+
+[MIT](LICENSE).

@@ -300,6 +300,80 @@
       border-color: var(--accent);
     }
 
+    /* ---------- phone ---------- */
+    .phone {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+      gap: 1.75rem;
+      align-items: start;
+    }
+    .steps {
+      list-style: none;
+      counter-reset: step;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+    .steps li {
+      counter-increment: step;
+      padding-left: 2.4rem;
+      position: relative;
+      font-size: 0.95rem;
+      color: var(--fg-soft);
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: -0.1rem;
+      width: 1.65rem;
+      height: 1.65rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .steps b {
+      display: block;
+      color: var(--fg);
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+    .steps code {
+      background: var(--bg-code);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 0.05rem 0.35rem;
+      font-size: 0.85em;
+      word-break: break-all;
+    }
+    .notes {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 1.4rem;
+      font-size: 0.9rem;
+      color: var(--fg-soft);
+    }
+    .notes li::before {
+      content: "→";
+      color: var(--accent);
+      font-weight: 700;
+      margin-right: 0.5rem;
+    }
+    .notes code {
+      background: var(--bg-code);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 0.05rem 0.35rem;
+      font-size: 0.85em;
+    }
+
     /* ---------- code ---------- */
     .snippets {
       display: grid;
@@ -479,6 +553,73 @@ ws.onopen = () =&gt; ws.send(JSON.stringify({ hello: "world" }));</code></pre>
         </div>
       </section>
 
+      <section id="phone">
+        <h2>Getting a phone into the loop</h2>
+        <p class="lede">
+          This is what the router is best at, and it needs no app, no pairing
+          code and no account. Open a channel URL in a browser and the page
+          renders a QR code <em>of its own URL</em>. Point a phone camera at it,
+          and the phone is on the channel.
+        </p>
+
+        <div class="phone">
+          <ol class="steps">
+            <li>
+              <b>Open a channel on the big screen</b>
+              Any URL is a channel, so pick a name nobody can guess:
+              <code>https://websocket-router.metapage.deno.net/kitchen-7f3a91</code>. The
+              page that loads shows a QR code for exactly that address.
+            </li>
+            <li>
+              <b>Scan it with the phone</b>
+              The camera app is enough — no install. The phone opens the
+              identical URL, which puts both devices on the same channel.
+            </li>
+            <li>
+              <b>Send anything, either direction</b>
+              Whatever the phone sends arrives at the screen, and whatever the
+              screen sends arrives at the phone. Neither hears its own echo.
+            </li>
+          </ol>
+
+          <figure>
+            <figcaption>On the phone — become a motion controller</figcaption>
+            <pre><code>const ws = new WebSocket(
+  "wss://websocket-router.metapage.deno.net/kitchen-7f3a91"
+);
+
+addEventListener("deviceorientation", (e) =&gt; {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ a: e.alpha, b: e.beta, g: e.gamma }));
+});</code></pre>
+          </figure>
+        </div>
+
+        <ul class="notes">
+          <li>
+            The QR encodes the <b>full</b> URL including its query string, so
+            any state you put in the address travels to the phone along with it.
+          </li>
+          <li>
+            Add <code>?hidden=true</code> to a channel URL to render the page
+            without the QR code, for once the devices are paired or when the
+            page is embedded in something else.
+          </li>
+          <li>
+            The channel page is also a metaframe: inputs handed to it go up the
+            channel, and messages coming down the channel become its outputs.
+            That is how a phone drives a display inside a
+            <a href="https://metapage.io">metapage</a> without any glue code.
+          </li>
+        </ul>
+
+        <div class="cta">
+          <a class="btn primary" id="open-phone-channel" href="#demo"
+          >Open a channel and scan it</a>
+          <a class="btn" href="/docs/guide/use-cases">More patterns</a>
+        </div>
+      </section>
+
       <section>
         <h2>What people build with it</h2>
         <p class="lede">
@@ -490,8 +631,9 @@ ws.onopen = () =&gt; ws.send(JSON.stringify({ hello: "world" }));</code></pre>
             <div class="icon">📱</div>
             <h3>Phone as a controller</h3>
             <p>
-              Show a QR code on the big screen, scan it, and the phone is now a
-              gamepad, a slide clicker, or a motion sensor feeding the display.
+              A gamepad, a slide clicker, a motion sensor or a remote for
+              whatever is on the big screen. <a href="#phone">One scan</a> and
+              it is wired up.
             </p>
           </div>
           <div class="card">
@@ -590,6 +732,12 @@ ws.onopen = () =&gt; ws.send(JSON.stringify({ hello: "world" }));</code></pre>
     const wsUrl = httpUrl.href.replace(/^http/, "ws");
     document.getElementById("channel-url").textContent = httpUrl.href;
     document.getElementById("open-channel").href = `/${channel}`;
+    // The QR code the channel page renders is the point of this link, so it
+    // opens in a new tab: the phone scans it while this page keeps listening.
+    const phoneLink = document.getElementById("open-phone-channel");
+    phoneLink.href = `/${channel}`;
+    phoneLink.target = "_blank";
+    phoneLink.rel = "noopener";
 
     const NAMES = ["Client A", "Client B", "Client C"];
     const container = document.getElementById("clients");
