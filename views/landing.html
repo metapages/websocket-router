@@ -984,26 +984,78 @@ REDIS_URL=redis://localhost:6379 \
         log.scrollTop = log.scrollHeight;
       };
 
-      const ws = new WebSocket(wsUrl);
-      ws.addEventListener("open", () => {
-        dot.classList.add("on");
-        log.querySelector(".empty")?.replaceChildren("connected, listening…");
-      });
-      ws.addEventListener("close", () => dot.classList.remove("on"));
-      ws.addEventListener("message", (e) => append("recv", e.data));
+      // Reconnecting, because a demo socket dies for reasons that have nothing
+      // to do with the router: sleeping laptops, flaky wifi, and the back-
+      // forward cache (see the pagehide/pageshow handlers below).
+      let ws = null;
+      let suspended = false;
+      let attempt = 0;
+      let retryTimer = 0;
+
+      const connect = () => {
+        clearTimeout(retryTimer);
+        // Every handler bails if it is not the current socket, so a superseded
+        // connection can neither touch the UI nor schedule a reconnect.
+        const socket = new WebSocket(wsUrl);
+        ws = socket;
+
+        socket.addEventListener("open", () => {
+          if (ws !== socket) return;
+          attempt = 0;
+          dot.classList.add("on");
+          log.querySelector(".empty")?.replaceChildren("connected, listening…");
+        });
+        socket.addEventListener("message", (e) => {
+          if (ws !== socket) return;
+          append("recv", e.data);
+        });
+        socket.addEventListener("close", () => {
+          if (ws !== socket) return;
+          dot.classList.remove("on");
+          if (suspended) return;
+          retryTimer = setTimeout(connect, Math.min(500 * 2 ** attempt++, 5000));
+        });
+      };
+
+      connect();
 
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const text = input.value.trim();
-        if (!text || ws.readyState !== WebSocket.OPEN) return;
+        if (!text || ws?.readyState !== WebSocket.OPEN) return;
         ws.send(text);
         append("sent", text);
       });
 
-      return ws;
+      return {
+        // Closing before the page is cached keeps the reconnect loop from
+        // firing in a frozen page, and stops the browser logging a websocket
+        // failure it caused itself.
+        suspend: () => {
+          suspended = true;
+          clearTimeout(retryTimer);
+          ws?.close();
+        },
+        resume: () => {
+          suspended = false;
+          attempt = 0;
+          ws?.close();
+          connect();
+        },
+      };
     };
 
-    NAMES.forEach(makeClient);
+    const clients = NAMES.map(makeClient);
+
+    // Navigating away (the channel link right above) and coming back restores
+    // this page from the back-forward cache with its JS state intact but every
+    // websocket closed by the browser - that is the "failed: Page entered
+    // Back-Forward Cache" console error. Nothing reopens them on its own, so
+    // the demo would come back with three dead clients.
+    addEventListener("pagehide", () => clients.forEach((c) => c.suspend()));
+    addEventListener("pageshow", (e) => {
+      if (e.persisted) clients.forEach((c) => c.resume());
+    });
 
     document.getElementById("post-btn").addEventListener("click", (e) => {
       e.target.disabled = true;
