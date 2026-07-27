@@ -3,9 +3,10 @@
 node_modules
 deploy.log
 
-# A DENO_DIR pointed inside the workspace. CI keeps its cache outside the
-# checkout, but if that ever changes, `deno fmt`/`deno lint` would otherwise
-# walk every downloaded npm package and fail on files that are not ours.
+# CI points DENO_DIR here, inside the workspace, because the `runner` context
+# needed to put it anywhere else is unavailable in workflow env. This line is
+# what stops `deno fmt` and `deno lint` walking several hundred downloaded npm
+# files and failing on code that is not ours. Removing it breaks CI.
 .deno-cache
 
 # The docs toolchain is a separate npm project.

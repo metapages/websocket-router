@@ -6,13 +6,13 @@ Connect a websocket to any URL. Everything you send is delivered to **every othe
 client on that same URL**, and to nobody else. No accounts, no SDK, no schema, no
 setup.
 
-- **Live**: <https://websocket-router.metapage.deno.net>
-- **Documentation**: <https://websocket-router.metapage.deno.net/docs/>
+- **Live**: <https://router.metapage.io/>
+- **Documentation**: <https://router.metapage.io/docs/>
 - **Deploy console**: <https://console.deno.com/metapage/websocket-router>
 
 ```js
 const ws = new WebSocket(
-  "wss://websocket-router.metapage.deno.net/a-name-nobody-will-guess",
+  "wss://router.metapage.io/a-name-nobody-will-guess",
 );
 
 ws.onmessage = (event) => console.log("peer said:", event.data);
@@ -21,7 +21,7 @@ ws.onopen = () => ws.send(JSON.stringify({ hello: "world" }));
 
 ```sh
 curl -X POST \
-  https://websocket-router.metapage.deno.net/a-name-nobody-will-guess \
+  https://router.metapage.io/a-name-nobody-will-guess \
   -d '{"temperature": 21.4}'
 ```
 

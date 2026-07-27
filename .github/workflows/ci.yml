@@ -23,11 +23,15 @@ concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-# DENO_DIR is set per job rather than here because it needs `runner.temp`, which
-# is not available in workflow-level env. It must stay outside the workspace:
-# anything under the workspace is repository content as far as `deno fmt`,
-# `deno lint` and `git status` are concerned, and a restored dependency cache
-# would put thousands of npm files in front of them.
+env:
+  # This lives inside the workspace, which means `deno fmt` and `deno lint`
+  # would walk every downloaded npm package once the cache restores. They do
+  # not, because `.deno-cache` is gitignored and both commands honour it. Do
+  # not remove that .gitignore line.
+  #
+  # `runner.temp` would put it outside the checkout instead, but the `runner`
+  # context is not available in workflow-level or job-level env, only in steps.
+  DENO_DIR: ${{ github.workspace }}/.deno-cache
 
 jobs:
   quality:
@@ -41,9 +45,6 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
-
-    env:
-      DENO_DIR: ${{ runner.temp }}/deno-cache
 
     steps:
       - uses: actions/checkout@v4
@@ -111,7 +112,6 @@ jobs:
 
     env:
       REDIS_URL: redis://localhost:6379
-      DENO_DIR: ${{ runner.temp }}/deno-cache
 
     steps:
       - uses: actions/checkout@v4
