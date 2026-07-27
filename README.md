@@ -1,136 +1,175 @@
-# Architecture
+# Websocket Router
 
-### Production
+A public address space for realtime messages.
 
-```mermaid
-flowchart TB
+Connect a websocket to any URL. Everything you send is delivered to **every other
+client on that same URL**, and to nobody else. No accounts, no SDK, no schema, no
+setup.
 
-  subgraph deno ["deno"]
-    direction LR
-    connect1[connect.worker.io server1]
-    connect2[connect.worker.io server2]
-    connect1 <---> |redis| connect2
-  end
+- **Live**: <https://websocket-router.metapage.deno.net>
+- **Documentation**: <https://websocket-router.metapage.deno.net/docs/>
+- **Deploy console**: <https://console.deno.com/metapage/websocket-router>
 
-  subgraph api ["nhost"]
-    graphql
-  end
+```js
+const ws = new WebSocket(
+  "wss://websocket-router.metapage.deno.net/a-name-nobody-will-guess",
+);
 
-  phone --> connect1
-  browser --> connect2
-
-  connect1 --> graphql
-  connect2 --> graphql
+ws.onmessage = (event) => console.log("peer said:", event.data);
+ws.onopen = () => ws.send(JSON.stringify({ hello: "world" }));
 ```
 
-### Local development
-
-```mermaid
-flowchart LR
-
-  subgraph deno ["prod"]
-    direction LR
-    connect1[connect.worker.io worker]
-  end
-
-  subgraph local ["local development"]
-    direction LR
-    workerconnect["connect.local worker"]
-    worker-redis-proxy["worker-redis-proxy"]
-    worker-redis-proxy --> |dev redis| workerconnect
-  end
-
-  connect1 <---> |prod redis| worker-redis-proxy
-  phone --> connect1
-  browser --> workerconnect
-
+```sh
+curl -X POST \
+  https://websocket-router.metapage.deno.net/a-name-nobody-will-guess \
+  -d '{"temperature": 21.4}'
 ```
 
+## The one rule
 
-# Websocket router+channels and user MenuModel handling
+A message goes to every listener on the channel **except the sender**. That
+asymmetry is what lets symmetric peers broadcast freely without echoing
+themselves.
 
+`POST` is the exception: it has no socket to exclude, so it reaches everyone.
 
-Roles:
+## What it is not
 
- - Routes channel messages to all other listeners
- - If the websocket URL has `?control=<number>`, then load the matching `MenuModel+Controller`
-   - channel all messages to/from the websocket pipes and the `MenuModel+Controller`
-   - While the user is connected, refresh the notion slides
-   - The control number is the priority
-   - `control=0` means no control
+No persistence, no replay, no delivery guarantees, and no authentication beyond
+the secrecy of the channel name. It is a router, not a broker. See
+[Guarantees & limits](docs/reference/guarantees.md).
 
+## Commands
 
-## Role: router
+`just` on its own lists everything.
 
-Connects websocket channels (`https://connect.superslides.io/<channel>`) where any message from one channel connection is sent to all *other* channel connections.
-
-
-## Role: update users menus+items from notion
-
-Automatically. As long as the user is connected in any way, poll as often as allowed for updates. Fail fast and early and easily, but keep trying to update. Allow the user to be notified of updates.
-
-This way, the user just doesn't have to think about anything: stuff just gets updated automatically
+```sh
+just dev          # run locally with --watch on :3077 (needs a redis)
+just test         # integration tests against a disposable redis in docker
+just fmt          # format everything
+just ci           # exactly what CI enforces
+just docs-dev     # live-reloading documentation
+just deploy       # type check, build docs, deploy to Deno Deploy
+```
 
 ## Architecture
 
-Two things: 1) deno workers connected to 2) a single redis instance for channel pub/sub.
-
-For now, there is a single redis instance, deployed with Digital Ocean, publicly available on a random port, but secured with a password. In the future this will be expanded for redundancy and more throughput, and switchout out for a more performant system eventually. For now, redis is plenty fast enough.
-
-Only the pub/sub system is used, which is ephemeral. This can be easily locked down further when the number of users justifies.
-
-[View](https://mermaid.ink/svg/pako:eNp1UctuwjAQ_BVrT61EDjGccmz5g3JjezD2prFI7MhZy0LAv-M0gIKa7snz8Hi0PoP2hqCCuvVJNyqw2G3RiTyx3CN8Nso5akWJ8H2n5TK9fpvxMvPvd2GzICAP8fATVN8I1VuRDeI3CRnZ2ECarXdi9zExaWyS6DB4fSQWyYcjhdnb4yS55JFT6tMVyNhhdqkURVGIy7Pd5Y9D_uPgsRo580iPU1QqH1t6hetXuJmgRAcr6Ch0ypr8CedRRuCGOkKo8tFQrWLLCOiu2aoi-6-T01BxiLSC2BvFtLUq77KDqlbtQNcbJkuOyw)
+Identical stateless instances, connected by redis pub/sub. Only pub/sub is used
+— nothing is written to a key and nothing is persisted.
 
 ```mermaid
-flowchart TD
-    u1["Channel 1"]
-    u2["Channel 1"]
-    u3(["Channel 2"])
-    u4(["Channel 2"])
-	subgraph api [" "]
-		direction TB
-		w1["websocket worker 1"]
-        w2["websocket worker 2"]
+flowchart TB
+    ca["client A"] --- s1
+    cb["client B"] --- s1
+    cc["client C"] --- s2
+    cd["client D"] --- s3
 
-        redis
-        w1 --- |Channel 2| redis
-        w2 --- |Channel 2| redis	
-	end
-
-    u1 --- w1
-    u2 --- w1
-    u3 --- w1
-    u4 --- w2
-
-
+    subgraph cluster [" "]
+      direction LR
+      s1["router instance 1"]
+      s2["router instance 2"]
+      s3["router instance 3"]
+      redis[("redis pub/sub")]
+      s1 --- redis
+      s2 --- redis
+      s3 --- redis
+    end
 ```
+
+A message sent by client A is written directly to A's local peers, and published
+to redis prefixed with the sending instance's id. Every instance receives it; the
+originating one recognises its own prefix and drops it, and the others strip the
+prefix and fan out to their own sockets.
+
+Each instance holds exactly **one** redis subscription per channel, however many
+local sockets that channel has. That is what makes delivery exactly-once.
+
+| File                    | Responsibility                                 |
+| ----------------------- | ---------------------------------------------- |
+| `src/serve.ts`          | Entrypoint                                     |
+| `src/server.ts`         | `Deno.serve` plus the websocket/HTTP split     |
+| `src/handlerWs.ts`      | All routing: channels, sockets, redis fan-out  |
+| `src/handlerHttpOak.ts` | HTTP routes and static file serving            |
+| `src/redis/client.ts`   | Publish and subscribe clients                  |
+| `src/id.ts`             | Per-process instance id used for loop breaking |
+| `docs/`                 | The vitepress site served at `/docs`           |
+| `test/integration/`     | Real servers, real redis, real websockets      |
+
+## HTTP surface
+
+| Method | Path           | Purpose                                     |
+| ------ | -------------- | ------------------------------------------- |
+| `GET`  | `/`            | Landing page                                |
+| `GET`  | `/docs/*`      | Documentation                               |
+| `GET`  | `/healthcheck` | `OK`                                        |
+| `GET`  | `/:channel`    | Channel page — QR code plus a metaframe     |
+| `POST` | `/:channel`    | Broadcast the request body to all listeners |
+| `WS`   | `/:channel`    | Join the channel                            |
+
+## Development
+
+Needs [Deno](https://deno.land) 2.x, [just](https://github.com/casey/just),
+Docker (for the test redis) and Node.js 20+ (for the docs).
+
+```sh
+docker run -d -p 6379:6379 redis:7-alpine
+just dev
+```
+
+Configuration is environment variables, from `.env` locally:
+
+| Variable    | Required | Default                  | Purpose                          |
+| ----------- | -------- | ------------------------ | -------------------------------- |
+| `REDIS_URL` | **yes**  | —                        | Redis connection string          |
+| `PORT`      | no       | `3077`                   | Listen port                      |
+| `APP_FQDN`  | no       | `http://localhost:$PORT` | Host encoded in channel QR codes |
+
+CI runs on every push to a branch other than `main` and on pull requests into it:
+formatting, lint, type check, docs build, and the integration suite against a
+redis service container. `just ci` runs the same thing locally.
+
+## Documentation
+
+The docs are a separate npm project in `docs/`, built by vitepress into
+`docs/.vitepress/dist` and mounted by the server at `/docs`.
+
+```sh
+just docs-dev     # live reload
+just docs-build   # what CI checks; also fails on dead internal links
+```
+
+`docs/.vitepress/dist` is build output: gitignored, never committed, and built at
+deploy time.
+
+It still reaches production because the `deploy.include` list in `deno.json`
+names it explicitly. `deno deploy` honours `.gitignore`, but an explicitly
+included **plain path** (never a glob) is injected as a `!` negation and
+overrides it. That `include` list is also the complete set of files uploaded —
+15 runtime files plus the built docs — so tests, docs sources and CI config never
+leave your machine.
+
+`just deploy` rebuilds the docs, refuses to deploy if they are missing, and
+smoke-tests the live deployment afterwards with `just verify-production`.
 
 ## Deployment
 
-Hosted on [Deno Deploy](https://console.deno.com/metapage/websocket-router) (not Deploy
-Classic). Production URL: <https://websocket-router.metapage.deno.net>
+Hosted on [Deno Deploy](https://console.deno.com/metapage/websocket-router) (not
+Deploy Classic).
 
 ```sh
 just deploy
+just logs        # tail production logs
+just env-list    # what production is using
+just env-push    # load ./.env into the application
 ```
 
-The deploy configuration lives in the `deploy` block of `deno.json` — org, app, and the
-`src/serve.ts` entrypoint. That block takes precedence over anything set in the Deno
-Deploy dashboard, so change it here rather than there. `deno deploy` uploads the whole
-working tree (minus anything in `.gitignore` and `node_modules`), which is how `views/`
-and `public/` reach the runtime.
+The deploy configuration lives in the `deploy` block of `deno.json` — org, app,
+and the `src/serve.ts` entrypoint. That block takes precedence over anything set
+in the dashboard, so change it here rather than there.
 
-Authentication: locally `deno deploy` uses the device login from `deno deploy login`. Deploy
-Classic `ddp_` tokens are *not* valid — if a stale `DENO_DEPLOY_TOKEN` is exported it will
-override the device login and every deploy will fail with `AUTH_INVALID_TOKEN`.
+Authentication uses the device login from `deno deploy login`. Deploy Classic
+`ddp_` tokens are **not** valid — a stale `DENO_DEPLOY_TOKEN` in the environment
+overrides the device login and every deploy fails with `AUTH_INVALID_TOKEN`.
 
-Environment variables are set on the application, not baked into the deploy:
-
-```sh
-just env-list                    # show what production has
-just env-push                    # load ./.env into the application
-just logs                        # tail production logs
-```
-
-`REDIS_URL` (secret) and `APP_FQDN` are both required — the server throws on startup
-without `REDIS_URL`, and `APP_FQDN` is what the index page QR code points at.
+`REDIS_URL` (secret) and `APP_FQDN` are set on the application, not baked into a
+deploy. The server throws on startup without `REDIS_URL`.

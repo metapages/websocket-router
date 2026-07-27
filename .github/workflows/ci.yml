@@ -1,0 +1,124 @@
+name: CI
+
+# Runs on every push to a branch other than main, on pull requests into main,
+# and on demand. main itself is covered by the pull request run that merged into
+# it, so pushing there does not re-run the same checks.
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DENO_DIR: ${{ github.workspace }}/.deno-cache
+
+jobs:
+  quality:
+    name: Format, lint, type check, docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Cache deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
+          restore-keys: deno-${{ runner.os }}-
+
+      # Formatting is a hard gate: `just fmt` fixes anything this reports.
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Lint
+        run: just lint
+
+      - name: Type check
+        run: just check
+
+      # docs/.vitepress/dist is build output, produced at deploy time. It is
+      # intentionally un-ignored so `deno deploy` uploads it, which makes it easy
+      # to commit by accident.
+      - name: Check built docs are not committed
+        run: just docs-not-committed
+
+      # Also fails on dead internal links in the documentation.
+      - name: Build documentation
+        run: just docs-build
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Cache deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
+          restore-keys: deno-${{ runner.os }}-
+
+      # The docs are build output and are not in the checkout, but the suite
+      # asserts that /docs is served. Build them so that coverage is real rather
+      # than skipped.
+      - name: Build documentation
+        run: just docs-build
+
+      # Warm the module cache so the servers the tests spawn start immediately
+      # rather than downloading dependencies inside the health-check timeout.
+      - name: Warm dependency cache
+        run: just check
+
+      - name: Integration tests
+        run: just test-only
+        env:
+          TEST_SERVER_LOGS: "1"

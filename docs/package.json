@@ -1,0 +1,15 @@
+{
+  "name": "websocket-router-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation site for the websocket router, served at /docs",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

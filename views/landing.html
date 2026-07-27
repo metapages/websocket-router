@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Websocket Router — a shared address space for realtime messages</title>
+    <meta
+      name="description"
+      content="Open a websocket to any URL and every other client on that URL gets what you send. No accounts, no SDK, no setup."
+    />
+    <link id="favicon" rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <style>
+    :root {
+      --bg: #ffffff;
+      --bg-soft: #f6f7f9;
+      --bg-code: #f0f2f5;
+      --fg: #16181d;
+      --fg-soft: #5c6370;
+      --fg-faint: #8b93a1;
+      --line: #e3e6ea;
+      --accent: #1f6feb;
+      --accent-soft: #e8f0fe;
+      --send: #b45309;
+      --recv: #15803d;
+      --radius: 10px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1116;
+        --bg-soft: #161920;
+        --bg-code: #1b1f28;
+        --fg: #e6e8ec;
+        --fg-soft: #a2a9b6;
+        --fg-faint: #6f7885;
+        --line: #262b35;
+        --accent: #6ea8fe;
+        --accent-soft: #172033;
+        --send: #f0b429;
+        --recv: #4ade80;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html {
+      scroll-behavior: smooth;
+    }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    code,
+    pre,
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        monospace;
+    }
+    a {
+      color: var(--accent);
+    }
+
+    .wrap {
+      max-width: 62rem;
+      margin: 0 auto;
+      padding: 0 1.25rem;
+    }
+    section {
+      padding: 3.5rem 0;
+      border-top: 1px solid var(--line);
+    }
+    section:first-of-type {
+      border-top: 0;
+    }
+    h2 {
+      font-size: 1.5rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.4rem;
+    }
+    .lede {
+      color: var(--fg-soft);
+      margin-bottom: 2rem;
+      max-width: 46rem;
+    }
+
+    /* ---------- hero ---------- */
+    header {
+      padding: 4.5rem 0 3.5rem;
+    }
+    .eyebrow {
+      display: inline-block;
+      font-size: 0.75rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      margin-bottom: 1.1rem;
+    }
+    h1 {
+      font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      margin-bottom: 1rem;
+      max-width: 20ch;
+    }
+    .sub {
+      font-size: 1.15rem;
+      color: var(--fg-soft);
+      max-width: 44rem;
+      margin-bottom: 1.1rem;
+    }
+    .sub strong {
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.7rem;
+      margin-top: 1.6rem;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.6rem 1.15rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      text-decoration: none;
+      color: var(--fg);
+      font-weight: 550;
+      font-size: 0.95rem;
+      background: var(--bg-soft);
+    }
+    .btn:hover {
+      border-color: var(--accent);
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      filter: brightness(1.08);
+    }
+
+    .rule {
+      margin-top: 2.5rem;
+      padding: 1rem 1.15rem;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius);
+      background: var(--bg-soft);
+      font-size: 0.98rem;
+    }
+    .rule b {
+      font-weight: 600;
+    }
+
+    /* ---------- demo ---------- */
+    .channel-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--fg-soft);
+      margin-bottom: 1rem;
+    }
+    .channel-line code {
+      background: var(--bg-code);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.15rem 0.45rem;
+      color: var(--fg);
+      word-break: break-all;
+    }
+    .clients {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+      gap: 1rem;
+    }
+    .client {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-soft);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .client h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.6rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: var(--fg-faint);
+      flex: none;
+    }
+    .dot.on {
+      background: var(--recv);
+    }
+    .log {
+      height: 11rem;
+      overflow-y: auto;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .log .empty {
+      color: var(--fg-faint);
+      font-style: italic;
+    }
+    .log .line {
+      word-break: break-word;
+    }
+    .log .line .tag {
+      font-weight: 700;
+      margin-right: 0.4rem;
+    }
+    .log .sent .tag {
+      color: var(--send);
+    }
+    .log .recv .tag {
+      color: var(--recv);
+    }
+    .log .sent {
+      opacity: 0.75;
+    }
+    .compose {
+      display: flex;
+      gap: 0.4rem;
+      padding: 0.6rem;
+      border-top: 1px solid var(--line);
+    }
+    .compose input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.4rem 0.6rem;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+    .compose input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+    .compose button {
+      padding: 0.4rem 0.8rem;
+      border-radius: 7px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .compose button:hover {
+      filter: brightness(1.08);
+    }
+    .demo-extra {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--fg-soft);
+    }
+    .demo-extra button {
+      padding: 0.45rem 0.85rem;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
+      color: var(--fg);
+      font-size: 0.85rem;
+      font-weight: 550;
+      cursor: pointer;
+    }
+    .demo-extra button:hover {
+      border-color: var(--accent);
+    }
+
+    /* ---------- code ---------- */
+    .snippets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+      gap: 1rem;
+    }
+    figure {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--bg-code);
+    }
+    figcaption {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--fg-soft);
+      padding: 0.55rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg-soft);
+    }
+    pre {
+      padding: 0.9rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      line-height: 1.65;
+    }
+
+    /* ---------- cards ---------- */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.15rem;
+      background: var(--bg-soft);
+    }
+    .card .icon {
+      font-size: 1.35rem;
+      line-height: 1;
+      margin-bottom: 0.6rem;
+    }
+    .card h3 {
+      font-size: 1rem;
+      margin-bottom: 0.35rem;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: var(--fg-soft);
+    }
+
+    /* ---------- honest limits ---------- */
+    .limits {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+      gap: 1.75rem;
+    }
+    .limits h3 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--fg-soft);
+      margin-bottom: 0.65rem;
+    }
+    .limits ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      font-size: 0.92rem;
+    }
+    .limits li::before {
+      margin-right: 0.5rem;
+      font-weight: 700;
+    }
+    .yes li::before {
+      content: "✓";
+      color: var(--recv);
+    }
+    .no li::before {
+      content: "✕";
+      color: var(--fg-faint);
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 2rem 0 3rem;
+      font-size: 0.87rem;
+      color: var(--fg-soft);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+    }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <span class="eyebrow">Websocket Router</span>
+        <h1>A public address space for realtime messages.</h1>
+        <p class="sub">
+          Open a websocket to any URL you like. Everything you send is delivered
+          to <strong>every other client on that same URL</strong> — and to
+          nobody else. No accounts, no SDK, no schema, no setup.
+        </p>
+        <p class="sub">
+          It is the smallest useful piece of realtime plumbing: a channel is
+          just a name, a client is just a websocket, and a message is just
+          bytes you chose the meaning of.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="/docs/">Read the docs</a>
+          <a class="btn" id="open-channel" href="#demo">Open a live channel</a>
+          <a
+            class="btn"
+            href="https://github.com/metapages/websocket-router"
+          >GitHub</a>
+        </div>
+        <p class="rule">
+          <b>The one rule:</b> a message goes to every listener on the channel
+          <b>except the sender</b>. That single asymmetry is what makes peers
+          able to talk to each other without echoing themselves.
+        </p>
+      </header>
+
+      <section id="demo">
+        <h2>Watch it work</h2>
+        <p class="lede">
+          Three real websockets, open right now from this page to a
+          freshly-generated channel on this server. Send from one and watch the
+          other two receive it — while the sender does not.
+        </p>
+
+        <div class="channel-line">
+          <span>channel:</span> <code id="channel-url">connecting…</code>
+        </div>
+
+        <div class="clients" id="clients"></div>
+
+        <div class="demo-extra">
+          <button id="post-btn">Broadcast over HTTP POST</button>
+          <span
+          >Anything <code>POST</code>ed to the channel URL reaches
+            <em>all</em> listeners — there is no sender socket to exclude.</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>The whole API</h2>
+        <p class="lede">
+          There are two verbs. Connect a websocket to listen and send, or POST
+          to broadcast from anything that can make an HTTP request.
+        </p>
+        <div class="snippets">
+          <figure>
+            <figcaption>Browser / Deno / Node — join a channel</figcaption>
+            <pre><code>const ws = new WebSocket(
+  "wss://websocket-router.metapage.deno.net/my-secret-channel"
+);
+
+ws.onmessage = (e) =&gt; console.log("peer said", e.data);
+
+// goes to every other listener, never back to us
+ws.onopen = () =&gt; ws.send(JSON.stringify({ hello: "world" }));</code></pre>
+          </figure>
+          <figure>
+            <figcaption>Anything else — fire a message in</figcaption>
+            <pre><code>curl -X POST \
+  https://websocket-router.metapage.deno.net/my-secret-channel \
+  -d '{"temperature": 21.4}'
+
+# every listener on the channel receives the body verbatim,
+# on whichever server instance they happen to be connected to</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <h2>What people build with it</h2>
+        <p class="lede">
+          Anywhere two things need to talk and you do not want to stand up a
+          backend to introduce them.
+        </p>
+        <div class="cards">
+          <div class="card">
+            <div class="icon">📱</div>
+            <h3>Phone as a controller</h3>
+            <p>
+              Show a QR code on the big screen, scan it, and the phone is now a
+              gamepad, a slide clicker, or a motion sensor feeding the display.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🧩</div>
+            <h3>Wiring apps together</h3>
+            <p>
+              Two browser tabs, two iframes, two metaframes — a channel is a
+              pipe between components that were never designed to know about
+              each other.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🛰️</div>
+            <h3>Telemetry and dashboards</h3>
+            <p>
+              A device or a script POSTs readings to a channel; any number of
+              dashboards subscribe and render them live.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔁</div>
+            <h3>Bridging a local process</h3>
+            <p>
+              Give a script on your laptop and a page on the public internet the
+              same channel name and they are connected, no tunnel or port
+              forwarding.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">👥</div>
+            <h3>Presence and shared state</h3>
+            <p>
+              Cursors, selections, "who's here" — the kinds of small
+              collaborative touches that are not worth a whole realtime
+              platform.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔔</div>
+            <h3>Nudging a running app</h3>
+            <p>
+              CI finished, a job completed, a webhook fired: POST once and every
+              open tab reacts immediately.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Be honest about what this is</h2>
+        <p class="lede">
+          It is a router, not a database and not a platform. Knowing the edges
+          up front is what makes it pleasant to build on.
+        </p>
+        <div class="limits">
+          <div>
+            <h3>What you get</h3>
+            <ul class="yes">
+              <li>Fan-out to every listener but the sender</li>
+              <li>Works across server instances, via redis pub/sub</li>
+              <li>Any payload you like — it is never parsed</li>
+              <li>Channels appear the instant someone connects</li>
+              <li>Plain websockets and plain HTTP, from anywhere</li>
+            </ul>
+          </div>
+          <div>
+            <h3>What you do not</h3>
+            <ul class="no">
+              <li>No persistence — messages sent to nobody are gone</li>
+              <li>No history or replay for clients that join later</li>
+              <li>No delivery guarantee, no acks, no retries</li>
+              <li>No accounts: the channel name is the only secret</li>
+              <li>No server-side validation of what you send</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <a href="/docs/">Documentation</a>
+        <a href="https://github.com/metapages/websocket-router">Source</a>
+        <a href="/healthcheck">Health</a>
+        <span>Built by <a href="https://metapage.io">metapage</a>.</span>
+      </footer>
+    </div>
+
+    <script type="module">
+    const randomChannel = () =>
+      "demo-" +
+      Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+    const channel = randomChannel();
+    const httpUrl = new URL(`/${channel}`, location.href);
+    const wsUrl = httpUrl.href.replace(/^http/, "ws");
+    document.getElementById("channel-url").textContent = httpUrl.href;
+    document.getElementById("open-channel").href = `/${channel}`;
+
+    const NAMES = ["Client A", "Client B", "Client C"];
+    const container = document.getElementById("clients");
+
+    const makeClient = (name) => {
+      const el = document.createElement("div");
+      el.className = "client";
+      el.innerHTML = `
+        <h3><span class="dot"></span>${name}</h3>
+        <div class="log"><span class="empty">waiting…</span></div>
+        <form class="compose">
+          <input aria-label="message from ${name}" value="hi from ${name}" />
+          <button type="submit">Send</button>
+        </form>`;
+      container.appendChild(el);
+
+      const dot = el.querySelector(".dot");
+      const log = el.querySelector(".log");
+      const form = el.querySelector("form");
+      const input = el.querySelector("input");
+
+      const append = (kind, text) => {
+        log.querySelector(".empty")?.remove();
+        const line = document.createElement("div");
+        line.className = `line ${kind}`;
+        line.innerHTML = `<span class="tag">${
+          kind === "sent" ? "sent" : "recv"
+        }</span>`;
+        line.appendChild(document.createTextNode(text));
+        log.appendChild(line);
+        while (log.children.length > 40) log.firstChild.remove();
+        log.scrollTop = log.scrollHeight;
+      };
+
+      const ws = new WebSocket(wsUrl);
+      ws.addEventListener("open", () => {
+        dot.classList.add("on");
+        log.querySelector(".empty")?.replaceChildren("connected, listening…");
+      });
+      ws.addEventListener("close", () => dot.classList.remove("on"));
+      ws.addEventListener("message", (e) => append("recv", e.data));
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(text);
+        append("sent", text);
+      });
+
+      return ws;
+    };
+
+    NAMES.forEach(makeClient);
+
+    document.getElementById("post-btn").addEventListener("click", (e) => {
+      e.target.disabled = true;
+      fetch(httpUrl.href, {
+        method: "POST",
+        body: `HTTP POST at ${new Date().toLocaleTimeString()}`,
+      }).finally(() => {
+        e.target.disabled = false;
+      });
+    });
+    </script>
+  </body>
+</html>

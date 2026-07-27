@@ -31,19 +31,19 @@ body {
 .fullscreen {
   width: 100%;
   height: 100vh;
-  border:0;
+  border: 0;
   /* background: black; */
   background: transparent;
   position: absolute;
-  top:0p;
+  top: 0p;
   right: 0px;
   bottom: 0px;
   left: 0px;
 }
 
 #remainder {
-  overflow:hidden;
+  overflow: hidden;
   /* background: black; */
   background: transparent;
-  top:100vh;
+  top: 100vh;
 }

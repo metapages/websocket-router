@@ -2,3 +2,15 @@
 .env
 node_modules
 deploy.log
+
+# The docs toolchain is a separate npm project.
+docs/node_modules
+docs/.vitepress/cache
+
+# Built documentation. `just deploy` rebuilds it immediately before uploading.
+#
+# `deno deploy` honours .gitignore, so this line would normally strip /docs out
+# of production. It does not, because the `deploy.include` list in deno.json
+# names this path explicitly, and an explicitly included plain path overrides
+# .gitignore. Keep the two in sync.
+docs/.vitepress/dist
