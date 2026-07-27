@@ -3,6 +3,10 @@ name: CI
 # Runs on every push to a branch other than main, on pull requests into main,
 # and on demand. main itself is covered by the pull request run that merged into
 # it, so pushing there does not re-run the same checks.
+#
+# A push to a branch that already has an open pull request fires BOTH events, so
+# every job below is guarded to run the pull_request copy only for forks, whose
+# pushes never reach this repository. See the `if:` on each job.
 on:
   push:
     branches-ignore:
@@ -12,18 +16,35 @@ on:
       - main
   workflow_dispatch:
 
+# head_ref is set for pull_request events, ref for push events. Keying on
+# whichever exists puts both events for a branch in one group, so a new push
+# cancels the previous run whichever event started it.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-env:
-  DENO_DIR: ${{ github.workspace }}/.deno-cache
+# DENO_DIR is set per job rather than here because it needs `runner.temp`, which
+# is not available in workflow-level env. It must stay outside the workspace:
+# anything under the workspace is repository content as far as `deno fmt`,
+# `deno lint` and `git status` are concerned, and a restored dependency cache
+# would put thousands of npm files in front of them.
 
 jobs:
   quality:
     name: Format, lint, type check, docs
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Skip the duplicate pull_request run for branches in this repository; their
+    # push event already ran. Fork pull requests have no push event here, so
+    # this is the only run they get.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    env:
+      DENO_DIR: ${{ runner.temp }}/deno-cache
+
     steps:
       - uses: actions/checkout@v4
 
@@ -56,9 +77,10 @@ jobs:
       - name: Type check
         run: just check
 
-      # docs/.vitepress/dist is build output, produced at deploy time. It is
-      # intentionally un-ignored so `deno deploy` uploads it, which makes it easy
-      # to commit by accident.
+      # docs/.vitepress/dist is gitignored build output, produced at deploy
+      # time. It reaches production only via the `deploy.include` list in
+      # deno.json, so a `git add -f` of it would be silently redundant and then
+      # silently stale.
       - name: Check built docs are not committed
         run: just docs-not-committed
 
@@ -70,6 +92,11 @@ jobs:
     name: Integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # See the identical guard on `quality`.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
 
     services:
       redis:
@@ -84,6 +111,7 @@ jobs:
 
     env:
       REDIS_URL: redis://localhost:6379
+      DENO_DIR: ${{ runner.temp }}/deno-cache
 
     steps:
       - uses: actions/checkout@v4

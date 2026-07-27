@@ -3,6 +3,11 @@
 node_modules
 deploy.log
 
+# A DENO_DIR pointed inside the workspace. CI keeps its cache outside the
+# checkout, but if that ever changes, `deno fmt`/`deno lint` would otherwise
+# walk every downloaded npm package and fail on files that are not ours.
+.deno-cache
+
 # The docs toolchain is a separate npm project.
 docs/node_modules
 docs/.vitepress/cache
