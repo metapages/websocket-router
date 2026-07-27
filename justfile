@@ -24,8 +24,8 @@ grey              := "\\e[90m"
 	echo ""
 	just --list --unsorted --list-heading $'🪐 Commands for the websocket router:\n'
 	echo -e ""
-	echo -e "    Production URL 🔗     {{ green }}https://websocket-router.metapage.deno.net{{ normal }}"
-	echo -e "    Documentation 🔗      {{ green }}https://websocket-router.metapage.deno.net/docs/{{ normal }}"
+	echo -e "    Production URL 🔗     {{ green }}https://router.metapage.io{{ normal }}"
+	echo -e "    Documentation 🔗      {{ green }}https://router.metapage.io/docs/{{ normal }}"
 	echo -e "    Github  URL 🔗        {{ green }}https://github.com/metapages/websocket-router{{ normal }}"
 	echo -e "    Deploy Console URL 🔗 {{ green }}https://console.deno.com/metapage/websocket-router{{ normal }}"
 	echo -e ""
@@ -169,7 +169,7 @@ deploy: check docs-build
 	exit 1
 
 # Smoke test production over the network. Run by `just deploy`.
-verify-production url="https://websocket-router.metapage.deno.net":
+verify-production url="https://router.metapage.io":
 	#!/usr/bin/env bash
 	set -euo pipefail
 	url="{{ url }}"
@@ -193,9 +193,18 @@ verify-production url="https://websocket-router.metapage.deno.net":
 	check / 200 "except the sender"
 	# The docs are gitignored build output; if `deploy.include` ever stops
 	# naming them, this is what catches it.
-	check /docs/ 200 "Websocket Router"
-	check /docs/guide/introduction 200 "address space"
+	#
+	# Every needle here must be something ONLY the built docs emit. Any
+	# unmatched path is served the channel page, so a needle as generic as the
+	# site name passes even when /docs was never uploaded at all - which is
+	# exactly how a stale deployment slipped past an earlier version of this.
+	check /docs/ 200 'name="generator" content="VitePress'
+	check /docs/guide/introduction 200 "vp-doc"
 	check /docs/reference/api 200 "POST /:channel"
+	# A channel name must NOT be served documentation. This is the other half of
+	# the check above: together they prove /docs is a real mount rather than the
+	# catch-all swallowing everything.
+	check /verify-not-a-docs-page 200 qrimage
 	echo -e "{{ blue }}▸ websocket round trip{{ normal }}"
 	deno run --quiet --allow-net ./test/verify-production.ts "$url" || fail=1
 	if [ "$fail" != "0" ]; then

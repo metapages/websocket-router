@@ -13,7 +13,7 @@ Loading a channel URL in a browser serves a small page that:
 - forwards **metaframe inputs** onto the channel as JSON, and
 - turns **JSON messages from the channel** into metaframe outputs.
 
-In other words, dropping `https://websocket-router.metapage.deno.net/<channel>`
+In other words, dropping `https://router.metapage.io/<channel>`
 into a metapage gives you a pipe. Anything piped into that metaframe appears on
 the channel; anything on the channel appears on its outputs.
 
@@ -53,7 +53,7 @@ converts the scheme automatically, which makes a one-line bridge between two
 channels:
 
 ```
-https://websocket-router.metapage.deno.net/channel-a#?forward=https://websocket-router.metapage.deno.net/channel-b
+https://router.metapage.io/channel-a#?forward=https://router.metapage.io/channel-b
 ```
 
 Messages arriving on `channel-a` are republished onto `channel-b`.
@@ -80,7 +80,7 @@ itself:
 import { Metaframe } from "https://cdn.jsdelivr.net/npm/@metapages/metapage@0.15.0/+esm";
 
 const mf = new Metaframe();
-const ws = new WebSocket(`wss://websocket-router.metapage.deno.net/${channel}`);
+const ws = new WebSocket(`wss://router.metapage.io/${channel}`);
 
 mf.onInputs((inputs) => {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(inputs));
