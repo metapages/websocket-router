@@ -8,6 +8,9 @@ APP_FQDN          := env_var_or_default("APP_FQDN", "localhost:3077")
 PORT              := env_var_or_default("PORT", "3077")
 TEST_REDIS_PORT   := env_var_or_default("TEST_REDIS_PORT", "6399")
 TEST_REDIS_NAME   := "websocket-router-test-redis"
+# Extra flags for `deno deploy`. CI sets this to "--non-interactive" so a
+# missing value fails fast instead of blocking on a prompt nobody can answer.
+DEPLOY_FLAGS      := env_var_or_default("DEPLOY_FLAGS", "")
 
 ###########################################################################
 # Formatting
@@ -153,7 +156,7 @@ deploy: check docs-build
 	for i in $(seq 1 $attempts); do
 	  echo -e "{{ blue }}deno deploy attempt $i/$attempts{{ normal }}"
 	  set +e
-	  timeout 420 deno deploy --prod 2>&1 | tee deploy.log
+	  timeout 420 deno deploy --prod $DEPLOY_FLAGS 2>&1 | tee deploy.log
 	  code=${PIPESTATUS[0]}
 	  set -e
 	  if grep -q "Successfully deployed your application" deploy.log; then

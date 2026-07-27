@@ -1,0 +1,85 @@
+name: Deploy
+
+# Deploys to Deno Deploy production (https://router.metapage.io).
+#
+# Every push to main deploys. The quality gates are not repeated here: main only
+# moves through pull requests, and CI already ran format, lint, type check, docs
+# and the integration suite on that pull request. What this workflow does add is
+# `just verify-production`, which smoke tests the real deployment over the
+# network and fails the run if the new revision is bad.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Never deploy two revisions concurrently, and never cancel one mid-upload:
+# a cancelled `deno deploy` can leave a half-uploaded revision behind. A second
+# push waits for the first deploy to finish instead.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Keep the module cache inside the workspace; see the note in ci.yml.
+  DENO_DIR: ${{ github.workspace }}/.deno-cache
+  # `deno deploy` prompts for anything it cannot infer. There is nobody here to
+  # answer, so make it fail fast instead of hanging until the 420s timeout in
+  # the `deploy` recipe. Consumed by the justfile's DEPLOY_FLAGS.
+  DEPLOY_FLAGS: --non-interactive
+
+jobs:
+  deploy:
+    name: Deploy to Deno Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://router.metapage.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: extractions/setup-just@v2
+
+      # The docs are built here, not committed: `just deploy` builds them and
+      # `deploy.include` in deno.json is what carries them into production.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Cache deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
+          restore-keys: deno-${{ runner.os }}-
+
+      # Without this the failure surfaces much later as an opaque auth error
+      # from the deploy CLI, after the docs have already been built.
+      - name: Require deploy credentials
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$DENO_DEPLOY_TOKEN" ]; then
+            echo "::error::DENO_DEPLOY_TOKEN is not set. Create a token at" \
+              "https://console.deno.com/account/tokens and add it as a repository secret."
+            exit 1
+          fi
+
+      # `just deploy` type checks, builds the docs, retries the upload (the CLI
+      # intermittently hangs), and finishes by running `just verify-production`
+      # against https://router.metapage.io.
+      - name: Deploy
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: just deploy

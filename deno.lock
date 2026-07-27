@@ -14,6 +14,7 @@
     "jsr:@std/io@0.224": "0.224.9",
     "jsr:@std/media-types@1": "1.1.0",
     "jsr:@std/path@1": "1.1.6",
+    "jsr:@std/yaml@1": "1.1.0",
     "npm:path-to-regexp@6.2.1": "6.2.1",
     "npm:redis@4.5": "4.5.1"
   },
@@ -67,6 +68,9 @@
       "dependencies": [
         "jsr:@std/internal@^1.0.14"
       ]
+    },
+    "@std/yaml@1.1.0": {
+      "integrity": "fc1c5c63e05c4c5eb6118355f557958035d41940d6c29d35b306ef7155d6edb0"
     }
   },
   "npm": {
