@@ -1,0 +1,152 @@
+name: CI
+
+# Runs on every push to a branch other than main, on pull requests into main,
+# and on demand. main itself is covered by the pull request run that merged into
+# it, so pushing there does not re-run the same checks.
+#
+# A push to a branch that already has an open pull request fires BOTH events, so
+# every job below is guarded to run the pull_request copy only for forks, whose
+# pushes never reach this repository. See the `if:` on each job.
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# head_ref is set for pull_request events, ref for push events. Keying on
+# whichever exists puts both events for a branch in one group, so a new push
+# cancels the previous run whichever event started it.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# DENO_DIR is set per job rather than here because it needs `runner.temp`, which
+# is not available in workflow-level env. It must stay outside the workspace:
+# anything under the workspace is repository content as far as `deno fmt`,
+# `deno lint` and `git status` are concerned, and a restored dependency cache
+# would put thousands of npm files in front of them.
+
+jobs:
+  quality:
+    name: Format, lint, type check, docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Skip the duplicate pull_request run for branches in this repository; their
+    # push event already ran. Fork pull requests have no push event here, so
+    # this is the only run they get.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    env:
+      DENO_DIR: ${{ runner.temp }}/deno-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Cache deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
+          restore-keys: deno-${{ runner.os }}-
+
+      # Formatting is a hard gate: `just fmt` fixes anything this reports.
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Lint
+        run: just lint
+
+      - name: Type check
+        run: just check
+
+      # docs/.vitepress/dist is gitignored build output, produced at deploy
+      # time. It reaches production only via the `deploy.include` list in
+      # deno.json, so a `git add -f` of it would be silently redundant and then
+      # silently stale.
+      - name: Check built docs are not committed
+        run: just docs-not-committed
+
+      # Also fails on dead internal links in the documentation.
+      - name: Build documentation
+        run: just docs-build
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # See the identical guard on `quality`.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      REDIS_URL: redis://localhost:6379
+      DENO_DIR: ${{ runner.temp }}/deno-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Cache deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
+          restore-keys: deno-${{ runner.os }}-
+
+      # The docs are build output and are not in the checkout, but the suite
+      # asserts that /docs is served. Build them so that coverage is real rather
+      # than skipped.
+      - name: Build documentation
+        run: just docs-build
+
+      # Warm the module cache so the servers the tests spawn start immediately
+      # rather than downloading dependencies inside the health-check timeout.
+      - name: Warm dependency cache
+        run: just check
+
+      - name: Integration tests
+        run: just test-only
+        env:
+          TEST_SERVER_LOGS: "1"

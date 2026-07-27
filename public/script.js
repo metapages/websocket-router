@@ -1,12 +1,11 @@
 import {
   getHashParamsFromWindow,
-} from 'https://cdn.jsdelivr.net/npm/@metapages/hash-query@0.4.7/+esm';
+} from "https://cdn.jsdelivr.net/npm/@metapages/hash-query@0.4.7/+esm";
 import {
   isIframe,
   Metaframe,
-} from 'https://cdn.jsdelivr.net/npm/@metapages/metapage@0.15.0/+esm';
-import ReconnectingWebSocket
-  from 'https://cdn.jsdelivr.net/npm/reconnecting-websocket@4.4.0/+esm';
+} from "https://cdn.jsdelivr.net/npm/@metapages/metapage@0.15.0/+esm";
+import ReconnectingWebSocket from "https://cdn.jsdelivr.net/npm/reconnecting-websocket@4.4.0/+esm";
 
 const url = new URL(window.location.href);
 url.hash = "";
@@ -94,7 +93,8 @@ const testApplicationMetapageDefinition = {
   },
   metaframes: {
     "random-data-generator": {
-      url: "https://metapages.org/metaframes/random-data-generator/?frequency=1000",
+      url:
+        "https://metapages.org/metaframes/random-data-generator/?frequency=1000",
     },
     "websocket-testrouting-1234": {
       inputs: [
@@ -106,7 +106,8 @@ const testApplicationMetapageDefinition = {
       url: `${hrefBase}testrouting-1234`,
     },
     "websocket-testrouting-1234-DUPLICATE": {
-      url: `${hrefBase}testrouting-1234#?forward=${hrefBase}testrouting-endpoint-1234`,
+      url:
+        `${hrefBase}testrouting-1234#?forward=${hrefBase}testrouting-endpoint-1234`,
     },
     "websocket-testrouting-1234-DUPLICATE-passthru": {
       inputs: [
@@ -165,9 +166,11 @@ if (forwardWebsocketAddress) {
     : undefined;
   forwardWebsocket.onerror = (err) => {
     console.error(
-      `forwardWebsocketAddress=${forwardWebsocketAddress} error=${err} error=${JSON.stringify(
-        err
-      )}`
+      `forwardWebsocketAddress=${forwardWebsocketAddress} error=${err} error=${
+        JSON.stringify(
+          err,
+        )
+      }`,
     );
   };
   forwardWebsocket.addEventListener("open", () => {
@@ -179,8 +182,8 @@ if (forwardWebsocketAddress) {
 }
 
 if (document.getElementById("title")) {
-  document.getElementById("title").innerText =
-    "Websocket route: " + window.location.pathname.substring(1);
+  document.getElementById("title").innerText = "Websocket route: " +
+    window.location.pathname.substring(1);
 }
 
 /* Set up the metaframe */
@@ -296,17 +299,19 @@ setInterval(() => {
 
 if (!isIframe()) {
   const definition = btoa(
-    encodeURIComponent(JSON.stringify(testApplicationMetapageDefinition))
+    encodeURIComponent(JSON.stringify(testApplicationMetapageDefinition)),
   );
   document.getElementById(
-    "test"
-  ).innerHTML = `<a href="https://app.metapages.org/#?definition=${definition}">Test application</a>`;
+    "test",
+  ).innerHTML =
+    `<a href="https://app.metapages.org/#?definition=${definition}">Test application</a>`;
 }
 
 // Allow the QR Code to be hidden
-const minimal = hashParams["minimal"] === "true" || hashParams["minimal"] === "1";
+const minimal = hashParams["minimal"] === "true" ||
+  hashParams["minimal"] === "1";
 if (minimal) {
-  const qrcodeImage = document.getElementById("qrcode");
+  const qrcodeImage = document.getElementById("qrimage");
   if (qrcodeImage) {
     qrcodeImage.style.display = "none";
   }

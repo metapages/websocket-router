@@ -8,35 +8,32 @@ if (!url) {
 
 const hostname = new URL(url).hostname;
 
-export const publishClient = await createClient({ url });
+/**
+ * Redis requires a dedicated connection for subscriptions — a client in
+ * subscriber mode cannot issue ordinary commands — so publishing and
+ * subscribing get one client each.
+ */
+const create = (label: string) => {
+  const client = createClient({ url });
+  // node-redis emits `error` on every reconnection attempt. Nothing here is
+  // fatal: with redis down, each instance still routes between its own local
+  // sockets, so log and let the client keep retrying.
+  client
+    .on("error", (err: Error) => console.log(`🌺 💥 Redis ${label} error`, err))
+    .on(
+      "connect",
+      () => console.log(`🌺 ...Redis ${label} connecting to ${hostname}`),
+    )
+    .on(
+      "reconnecting",
+      () => console.log(`🌺 ...Redis ${label} RE-connecting to ${hostname}`),
+    )
+    .on("ready", () => console.log(`🌺 ✅ Redis ${label} ready`));
+  return client;
+};
 
-(publishClient as any)
-  .on("error", (err: Error) =>
-    console.log("🌺 💥 Redis publishClient Error", err)
-  )
-  .on("connect", () =>
-    console.log("🌺 ...Redis publishClient connecting to " + hostname)
-  )
-  .on("reconnecting", () =>
-    console.log("🌺 ...Redis publishClient RE-connecting to " + hostname)
-  )
-  .on("ready", () => console.log("🌺 ✅ Redis publishClient ready"));
-
+export const publishClient = create("publishClient");
 await publishClient.connect();
 
-export const subscribeClient = await createClient({ url });
-
-(subscribeClient as any)
-  .on("error", (err: Error) =>
-    console.log("🌺 💥 Redis subscribeClient Error", err)
-  )
-  .on("connect", () =>
-    console.log("🌺 ...Redis subscribeClient connecting to " + hostname)
-  )
-  .on("reconnecting", () =>
-    console.log("🌺 ...Redis subscribeClient RE-connecting to " + hostname)
-  )
-  .on("ready", () => console.log("🌺 ✅ Redis subscribeClient ready"));
-
+export const subscribeClient = create("subscribeClient");
 await subscribeClient.connect();
-
