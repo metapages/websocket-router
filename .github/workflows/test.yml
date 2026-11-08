@@ -1,26 +1,24 @@
-name: CI
+name: Test
 
-# Runs on every push to a branch other than main, on pull requests into main,
-# and on demand. main itself is covered by the pull request run that merged into
-# it, so pushing there does not re-run the same checks.
+# The checks that gate main. These are the names to list as required status
+# checks in the branch ruleset: "Type check and build", "Integration suite"
+# and "Certificate issuance".
 #
-# A push to a branch that already has an open pull request fires BOTH events, so
-# every job below is guarded to run the pull_request copy only for forks, whose
-# pushes never reach this repository. See the `if:` on each job.
+# Triggered on pull requests, and callable from deploy.yml so that a push to
+# main runs the identical jobs rather than a second copy that can drift. It
+# deliberately does NOT trigger on push: a branch with an open pull request
+# fires both events, which would put two check runs of each name on the same
+# commit -- one of them skipped -- and a required check cannot tell which of
+# those gates the merge.
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
     branches:
       - main
+  workflow_call:
   workflow_dispatch:
 
-# head_ref is set for pull_request events, ref for push events. Keying on
-# whichever exists puts both events for a branch in one group, so a new push
-# cancels the previous run whichever event started it.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: test-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -29,20 +27,13 @@ permissions:
 jobs:
   # ---------------------------------------------------------------------
   # Type checks and the full build, including the docs. The docs build is
-  # part of CI because vitepress fails on dead internal links, which makes
+  # part of this because vitepress fails on dead internal links, which makes
   # it the only check that catches a renamed page.
   # ---------------------------------------------------------------------
   quality:
     name: Type check and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    # Skip the duplicate pull_request run for branches in this repository; their
-    # push event already ran. Fork pull requests have no push event here, so
-    # this is the only run they get.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
 
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +70,15 @@ jobs:
         run: |
           npm run build:server
           npm run build:web
-          cd docs && npm run build && cd ..
+          cd docs && npm run build 2>&1 | tee /tmp/docs-build.log && cd ..
+          # vitepress exits 0 even when server-side rendering throws, leaving
+          # pages without their nav or cross-links. deploy.sh checks for this
+          # too; catching it here means a pull request fails rather than a
+          # deploy.
+          if grep -q "not properly injected" /tmp/docs-build.log; then
+            echo "::error::docs built with server-side rendering errors"
+            exit 1
+          fi
           npm run compress
 
       - name: Precompressed variants exist
@@ -99,10 +98,6 @@ jobs:
     name: Integration suite
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
 
     steps:
       - uses: actions/checkout@v4
@@ -126,10 +121,6 @@ jobs:
     name: Certificate issuance
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
 
     steps:
       - uses: actions/checkout@v4

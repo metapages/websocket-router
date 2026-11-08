@@ -1,16 +1,32 @@
 # Workflows
 
-## `ci.yml`
+## `test.yml`
 
 Type checks and the full build, the integration suite in containers, and
-certificate issuance against pebble. Runs on every branch push and pull
-request.
+certificate issuance against pebble. Runs on every pull request into `main`,
+and is called by `deploy.yml` so a push to `main` runs the identical jobs.
+
+These three job names are the ones to list as required status checks on
+`main`:
+
+| Job name | What it covers |
+| --- | --- |
+| `Type check and build` | tsc across all three projects, the full build including docs, precompression, and that build output is not committed |
+| `Integration suite` | the containerised suite, which is also what proves non-root operation |
+| `Certificate issuance` | ACME HTTP-01 against pebble, Let's Encrypt's test server |
+
+It deliberately does **not** trigger on `push`. A branch with an open pull
+request fires both `push` and `pull_request`, which puts two check runs of
+each name on the same commit. Guarding one of them off with an `if:` does not
+help: the skipped run still reports a check run of that name, and a required
+status check cannot tell which of the two gates the merge. Requiring a check
+in that state blocks or passes a merge essentially at random.
 
 ## `deploy.yml`
 
-Builds, runs the integration suite, then deploys to every host in the
-`DEPLOY_HOSTS` repository variable over ssh — by running the same
-`deploy/deploy.sh` you would run by hand. Nothing about the deployment is
+Calls `test.yml`, then deploys to every host in the `DEPLOY_HOSTS` repository
+variable over ssh — by running the same `deploy/deploy.sh` you would run by
+hand. Nothing about the deployment is
 CI-specific: if Actions is down, the identical command from a checkout does
 the same thing, including the health gate and automatic rollback.
 
@@ -28,9 +44,9 @@ accepts an explicit host list and a `skip_tests` escape hatch).
 Set them with:
 
 ```sh
-gh variable set DEPLOY_HOSTS --body "165.232.59.253"
+gh variable set DEPLOY_HOSTS --body "<host>"
 gh secret   set DEPLOY_SSH_PRIVATE_KEY < deploy_key
-ssh-keyscan -t ed25519 165.232.59.253 | gh secret set DEPLOY_SSH_KNOWN_HOSTS
+ssh-keyscan -t ed25519 <host> | gh secret set DEPLOY_SSH_KNOWN_HOSTS
 ```
 
 Use a **dedicated** keypair, not a personal one. A key that only CI holds can
@@ -39,7 +55,7 @@ disturbing anyone's own access:
 
 ```sh
 ssh-keygen -t ed25519 -C "github-actions-deploy@websocket-router" -f deploy_key -N ""
-ssh-copy-id -i deploy_key.pub root@165.232.59.253
+ssh-copy-id -i deploy_key.pub root@<host>
 ```
 
 ### The `production` environment
@@ -67,3 +83,7 @@ gh secret set DEPLOY_SSH_PRIVATE_KEY < deploy_key
 
 `bootstrap.sh` does not install this key; it is deliberately a separate,
 explicit step so that a host is never silently reachable from CI.
+
+`DEPLOY_SSH_KNOWN_HOSTS` pins the host key, so **rebuilding or replacing a
+host invalidates it** and every deploy then fails verification. Re-run the
+`ssh-keyscan` line above whenever a host is recreated.
