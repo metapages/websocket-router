@@ -10,7 +10,8 @@ import type { ChannelPageRenderer } from "./channelPage.js";
 import type { ChannelRegistry } from "./channels.js";
 import type { Config } from "./config.js";
 import type { Logs } from "./logger.js";
-import { isReservedPath } from "./reserved.js";
+import { createInspectRouter } from "./inspect/routes.js";
+import { dynamicReservedPrefixes, isReservedPath } from "./reserved.js";
 import type { SettingsStore } from "./settings.js";
 import { safeJoin, sendStaticFile, staticMount } from "./staticAssets.js";
 import type { ChallengeResponder } from "./tls/acme.js";
@@ -171,7 +172,28 @@ export const createHttpApp = (deps: HttpDeps): Express => {
     logger.info("admin: disabled (set ADMIN_PASSWORD to enable)");
   }
 
-  // Browser bundles for the channel page and the admin panel.
+  // ---------------------------------------------------------------------
+  // the connection inspector, at /<INSPECT_KEY>
+  //
+  // Mounted above the channel catch-all, and reserved below it, so the key is
+  // the inspector and nothing else. Logged without the key: the path is the
+  // credential, and a log file is exactly where it must not end up.
+  // ---------------------------------------------------------------------
+  if (config.inspectKeyProblem !== undefined) {
+    logger.error(
+      { problem: config.inspectKeyProblem },
+      "inspect: INSPECT_KEY was set but is unusable; the inspector is off",
+    );
+  }
+  if (config.inspectKey !== undefined) {
+    app.use(
+      `/${config.inspectKey}`,
+      createInspectRouter({ registry, webRoot, startedAt }),
+    );
+    logger.info("inspect: enabled at a secret path");
+  }
+
+  // Browser bundles for the channel page, the admin panel and the inspector.
   app.use(
     staticMount({
       root: webRoot,
@@ -273,8 +295,9 @@ export const createHttpApp = (deps: HttpDeps): Express => {
   // This sits after every real handler for these prefixes, so it only catches
   // what none of them claimed.
   // ---------------------------------------------------------------------
+  const reserved = dynamicReservedPrefixes(config.inspectKey);
   app.use((request, response, next) => {
-    if (!isReservedPath(request.path)) return next();
+    if (!isReservedPath(request.path, reserved)) return next();
     response.status(404).type("text/plain").send("not found");
   });
 

@@ -238,19 +238,29 @@ verify url="https://router.metapage.io":
 	set -euo pipefail
 	url="{{ url }}"
 	fail=0
+	# `label` exists so a secret path can be checked without printing it.
 	check() {
-	  local path="$1" expect="$2" needle="${3:-}"
+	  local path="$1" expect="$2" needle="${3:-}" label="${4:-$1}"
 	  local body code
 	  body=$(curl -sS -L --max-time 20 -w '\n%{http_code}' "$url$path" || echo $'\n000')
 	  code=$(tail -n1 <<<"$body")
 	  body=$(sed '$d' <<<"$body")
 	  if [ "$code" != "$expect" ]; then
-	    echo -e "  {{ magenta }}✗ $path -> $code (expected $expect){{ normal }}"; fail=1; return
+	    echo -e "  {{ magenta }}✗ $label -> $code (expected $expect){{ normal }}"; fail=1; return
 	  fi
 	  if [ -n "$needle" ] && ! grep -qF "$needle" <<<"$body"; then
-	    echo -e "  {{ magenta }}✗ $path -> $code but missing '$needle'{{ normal }}"; fail=1; return
+	    echo -e "  {{ magenta }}✗ $label -> $code but missing '$needle'{{ normal }}"; fail=1; return
 	  fi
-	  echo -e "  {{ green }}✓ $path -> $code{{ normal }}"
+	  echo -e "  {{ green }}✓ $label -> $code{{ normal }}"
+	}
+	check_absent() {
+	  local path="$1" needle="$2" label="${3:-$1}"
+	  local body
+	  body=$(curl -sS -L --max-time 20 "$url$path" || true)
+	  if grep -qF "$needle" <<<"$body"; then
+	    echo -e "  {{ magenta }}✗ $label unexpectedly served '$needle'{{ normal }}"; fail=1; return
+	  fi
+	  echo -e "  {{ green }}✓ $label does not serve '$needle'{{ normal }}"
 	}
 	echo -e "{{ blue }}▸ verifying $url{{ normal }}"
 	check /healthcheck 200 OK
@@ -265,6 +275,19 @@ verify url="https://router.metapage.io":
 	# of the check above: together they prove /docs is a real mount rather
 	# than the catch-all swallowing everything.
 	check /verify-not-a-docs-page 200 qrimage
+	# The inspector, when a key is available (CI passes the repository secret;
+	# locally it comes from .env). The key is never printed: it is the whole
+	# credential, and `just verify` output ends up in CI logs and terminals.
+	# Skipped silently when there is no key, so this recipe stays usable by
+	# anyone verifying a deployment they do not hold the secret for.
+	if [ -n "${INSPECT_KEY:-}" ]; then
+	  echo -e "{{ blue }}▸ inspector{{ normal }}"
+	  check "/$INSPECT_KEY" 200 "Connection inspector" "/<INSPECT_KEY>"
+	  check "/$INSPECT_KEY/api/channels" 200 '"channels"' "/<INSPECT_KEY>/api/channels"
+	  # Exactly the key, not a prefix of it: a near miss has to be served the
+	  # ordinary channel page, which is what makes the real path unfindable.
+	  check_absent "/${INSPECT_KEY}x" "Connection inspector" "/<INSPECT_KEY>x"
+	fi
 	echo -e "{{ blue }}▸ compression{{ normal }}"
 	enc=$(curl -sS -H 'Accept-Encoding: br' -o /dev/null -w '%{content_type}' "$url/" || true)
 	bundle=$(curl -sS "$url/" | grep -o '/_/assets/[^"]*\.js' | head -1 || true)

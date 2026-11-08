@@ -9,6 +9,7 @@ name: Deploy
 #   gh variable set DEPLOY_HOSTS --body "1.2.3.4"            # or a hostname
 #   gh secret   set DEPLOY_SSH_PRIVATE_KEY < deploy_key      # root on the host
 #   gh secret   set DEPLOY_SSH_KNOWN_HOSTS < known_hosts     # ssh-keyscan output
+#   gh secret   set INSPECT_KEY                              # optional: /<key> inspector
 #
 # Each host is an INDEPENDENT router: there is no shared bus, so DEPLOY_HOSTS
 # is a list of separate deployments, not a cluster behind one name.
@@ -122,6 +123,11 @@ jobs:
           # Without one there is nothing to compare against, so fall back to
           # trust-on-first-use rather than failing every deploy.
           STRICT: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS != '' && 'yes' || 'accept-new' }}
+          # deploy.sh writes this into /opt/websocket-router/env on each host
+          # (see PUSH_ENV_KEYS there), so rotating the secret is a push to
+          # main and nothing else. Unset leaves whatever the host already has,
+          # which is what makes a deploy from a laptop safe.
+          INSPECT_KEY: ${{ secrets.INSPECT_KEY }}
         run: |
           # deploy.sh passes SSH_OPTS verbatim to both ssh and scp.
           export SSH_OPTS="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes \
@@ -130,6 +136,12 @@ jobs:
           ./deploy/deploy.sh ${{ steps.hosts.outputs.hosts }}
 
       - name: Verify each host over the network
+        env:
+          # `just verify` checks the inspector when it has a key, and prints
+          # the path as "/<INSPECT_KEY>" rather than its value. Actions masks
+          # secrets in logs too, but a check that depends on masking to stay
+          # secret is one line away from leaking.
+          INSPECT_KEY: ${{ secrets.INSPECT_KEY }}
         run: |
           for host in ${{ steps.hosts.outputs.hosts }}; do
             # The scheme depends on whether that host has TLS on; try https

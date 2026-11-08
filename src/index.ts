@@ -11,7 +11,7 @@ import { createChannelPageRenderer } from "./channelPage.js";
 import { loadConfig, ROOT } from "./config.js";
 import { createHttpApp, createRedirectApp } from "./httpApp.js";
 import { createLogs } from "./logger.js";
-import { isReservedPath } from "./reserved.js";
+import { dynamicReservedPrefixes, isReservedPath } from "./reserved.js";
 import { createSettingsStore } from "./settings.js";
 import { createCertificateManager } from "./tls/acme.js";
 import { channelNameFromUrl, createWebSocketServer } from "./wsServer.js";
@@ -91,11 +91,23 @@ const main = async (): Promise<void> => {
    * server, so a request for a channel name that is too short is refused at
    * the HTTP layer instead of being accepted and then immediately closed.
    */
+  // `/<INSPECT_KEY>` is the inspector page, not a channel, so an upgrade
+  // there is refused like any other reserved path.
+  const reserved = dynamicReservedPrefixes(config.inspectKey);
+
   const attachUpgrade = (server: Server) => {
     server.on("upgrade", (request, socket: Duplex, head) => {
       const path = (request.url ?? "/").split("?")[0] ?? "/";
-      if (isReservedPath(path)) {
-        logger.debug({ path }, "upgrade: refused, reserved path");
+      if (isReservedPath(path, reserved)) {
+        // The inspector key is the only reserved prefix that is a secret, and
+        // these logs are readable from the admin panel -- which is a lesser
+        // privilege than the inspector grants. So a refusal on that prefix is
+        // recorded without the value that would have let a reader open it.
+        const named = isReservedPath(path);
+        logger.debug(
+          { path: named ? path : "<INSPECT_KEY>" },
+          "upgrade: refused, reserved path",
+        );
         socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;

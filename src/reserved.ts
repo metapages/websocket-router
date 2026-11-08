@@ -18,7 +18,22 @@ export const RESERVED_PREFIXES = [
   "/docs",
 ] as const;
 
-export const isReservedPath = (path: string): boolean =>
-  RESERVED_PREFIXES.some(
+/**
+ * `extra` carries prefixes that are only reserved in some configurations --
+ * currently `/<INSPECT_KEY>`. It has to be part of the same check rather than
+ * a separate one for the reason above: the inspector key must mean the same
+ * thing to the HTTP stack and to the websocket upgrade handler, or a channel
+ * named after the key would exist over one protocol and not the other.
+ */
+export const isReservedPath = (
+  path: string,
+  extra: readonly string[] = [],
+): boolean =>
+  [...RESERVED_PREFIXES, ...extra].some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );
+
+/** The configuration-dependent reserved prefixes, for the `extra` argument. */
+export const dynamicReservedPrefixes = (
+  inspectKey: string | undefined,
+): string[] => (inspectKey === undefined ? [] : [`/${inspectKey}`]);

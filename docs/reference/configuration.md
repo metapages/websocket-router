@@ -67,6 +67,33 @@ openssl rand -base64 32   # ADMIN_PASSWORD
 openssl rand -hex 32      # ADMIN_SESSION_SECRET
 ```
 
+## Connection inspector
+
+See [Connection inspector](/guide/inspector) for what it shows and why the
+path works the way it does.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INSPECT_KEY` | — | Serves the inspector at `/<INSPECT_KEY>`. **The path is the whole credential**: there is no login. Unset means the route does not exist. |
+
+At least 16 characters of `A-Z a-z 0-9 - _`. A key that is shorter, or holds
+anything else, is refused: the inspector stays off, the reason is logged at
+error level, and the router keeps serving traffic — a misconfigured diagnostic
+tool is not a reason to take the site down.
+
+```sh
+openssl rand -hex 16      # INSPECT_KEY
+```
+
+The minimum length is not only about guessing. A short key is a *plausible
+channel name*, and the key is removed from the channel namespace — so an
+8-character key would quietly take the name out from under anyone already
+using it.
+
+Set it as a CI secret (`gh secret set INSPECT_KEY`) and `deploy.sh` writes it
+into this file on every deploy. Note that *removing* the CI secret does not
+remove the value from a host: delete the line there to do that.
+
 ## Messages
 
 | Variable | Default | Purpose |
@@ -102,6 +129,9 @@ TLS_EMAIL=ops@example.com
 
 ADMIN_PASSWORD=yT8kQ2mXp9vL4nR7wZ3bF6hJ1sD5gA0c
 ADMIN_SESSION_SECRET=4f8a2c91e7b3d6054a1f8e2c7b9d3056f1a8c4e7b2d9f6031a5c8e2b7d4f9061
+
+# Written here by deploy.sh from the CI secret of the same name.
+INSPECT_KEY=1b9e4c7a2f8d06351e9a4c8b2d7f0356
 
 DATA_DIR=/var/lib/websocket-router
 LOG_DIR=/var/log/websocket-router

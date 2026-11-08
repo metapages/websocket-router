@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { dirname, join, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { inspectKeyProblem } from "./inspect/key.js";
+
 /**
  * Boot-time configuration, all from the environment.
  *
@@ -136,6 +138,17 @@ export type Config = {
   readonly adminPassword: string | undefined;
   readonly adminSessionSecret: string;
   readonly adminSessionTtlMs: number;
+  /**
+   * Secret path segment serving the connection inspector, or undefined when
+   * the feature is off. See `inspect/key.ts`.
+   */
+  readonly inspectKey: string | undefined;
+  /**
+   * Why INSPECT_KEY was ignored, when one was set but is unusable. Carried
+   * here rather than thrown so the caller can log it: boot-time validation
+   * happens before there is a logger.
+   */
+  readonly inspectKeyProblem: string | undefined;
   readonly trustProxy: boolean;
   readonly tls: TlsConfig;
 };
@@ -149,6 +162,13 @@ export const loadConfig = (): Config => {
     int("WS_DEFAULT_MAX_MESSAGE_BYTES", 1024 * 1024),
     hardMaxMessageBytes,
   );
+
+  // An unusable key disables the inspector instead of stopping the router;
+  // `inspectKeyProblem` explains why it is off.
+  const inspectKeyRaw = optional("INSPECT_KEY");
+  const keyProblem = inspectKeyRaw === undefined
+    ? null
+    : inspectKeyProblem(inspectKeyRaw);
 
   const tlsEnabled = bool("TLS_ENABLED", false);
   const domains = list("TLS_DOMAINS");
@@ -178,6 +198,8 @@ export const loadConfig = (): Config => {
     // restart. Set it in the environment to keep sessions across deploys.
     adminSessionSecret: str("ADMIN_SESSION_SECRET", randomBytes(32).toString("hex")),
     adminSessionTtlMs: int("ADMIN_SESSION_TTL_MINUTES", 12 * 60) * 60_000,
+    inspectKey: keyProblem === null ? inspectKeyRaw : undefined,
+    inspectKeyProblem: keyProblem ?? undefined,
     trustProxy: bool("TRUST_PROXY", false),
     tls: {
       enabled: tlsEnabled,

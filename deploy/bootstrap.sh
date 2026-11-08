@@ -172,6 +172,14 @@ TLS_ENABLED=false
 TLS_DOMAINS=
 TLS_EMAIL=
 
+# --- connection inspector ---
+# Serves a live list of connections at /<INSPECT_KEY>. The path IS the
+# credential: there is no login, and an empty value means the route does not
+# exist. At least 16 characters of [A-Za-z0-9_-]:
+#   openssl rand -hex 16
+# Set from CI instead (a repository secret) and deploy.sh writes it here.
+INSPECT_KEY=
+
 # --- admin panel: unset ADMIN_PASSWORD to disable it entirely ---
 ADMIN_PASSWORD=
 # Keeps admin sessions valid across restarts. Generate once:

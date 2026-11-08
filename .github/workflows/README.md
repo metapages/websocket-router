@@ -40,6 +40,7 @@ accepts an explicit host list and a `skip_tests` escape hatch).
 | variable | `DEPLOY_HOSTS` | Space-separated hosts. A variable, not a secret, so it is visible and editable. |
 | secret | `DEPLOY_SSH_PRIVATE_KEY` | Private key with root on each host. |
 | secret | `DEPLOY_SSH_KNOWN_HOSTS` | `ssh-keyscan` output. With it, CI verifies the host key; without it, the first connection is trusted blindly. |
+| secret | `INSPECT_KEY` | Optional. Serves the [connection inspector](../../docs/guide/inspector.md) at `/<key>`. Written into each host's environment file by `deploy.sh`; `just verify` then checks the route without printing it. |
 
 Set them with:
 
@@ -47,7 +48,20 @@ Set them with:
 gh variable set DEPLOY_HOSTS --body "<host>"
 gh secret   set DEPLOY_SSH_PRIVATE_KEY < deploy_key
 ssh-keyscan -t ed25519 <host> | gh secret set DEPLOY_SSH_KNOWN_HOSTS
+openssl rand -hex 16 | gh secret set INSPECT_KEY
 ```
+
+### Secrets that reach the host
+
+`DEPLOY_SSH_*` are used by the workflow itself. `INSPECT_KEY` is different: it
+is a value the *application* needs, and `deploy.sh` writes it into
+`/opt/websocket-router/env` on each host (see `PUSH_ENV_KEYS` there), so
+rotating it is a push to `main`.
+
+A deploy run without it set leaves whatever the host already has, which is
+what makes running `deploy/deploy.sh` from a laptop safe. The flip side:
+deleting the repository secret does **not** remove the value from a host.
+Delete the line in that file to do that.
 
 Use a **dedicated** keypair, not a personal one. A key that only CI holds can
 be revoked by deleting one line from `/root/.ssh/authorized_keys` without

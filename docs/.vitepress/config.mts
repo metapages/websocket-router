@@ -55,6 +55,7 @@ export default defineConfig({
           { text: "Architecture", link: "/guide/architecture" },
           { text: "Self-hosting", link: "/guide/self-hosting" },
           { text: "Admin panel", link: "/guide/admin" },
+          { text: "Connection inspector", link: "/guide/inspector" },
           { text: "Contributing", link: "/guide/contributing" },
         ],
       },
