@@ -120,8 +120,8 @@ is a drop-in `WebSocket` replacement and is what this project's own pages use.
 ```sh
 git clone https://github.com/metapages/websocket-router
 cd websocket-router
-docker run -d -p 6379:6379 redis   # redis is required
-just dev                           # http://localhost:3077
+just install
+just dev        # http://localhost:3077
 ```
 
 Then connect to `ws://localhost:3077/my-test-channel`. See

@@ -2,19 +2,17 @@
 
 A public address space for realtime messages.
 
-Connect a websocket to any URL. Everything you send is delivered to **every other
-client on that same URL**, and to nobody else. No accounts, no SDK, no schema, no
-setup.
+Connect a websocket to any URL. Everything you send is delivered to **every
+other client on that same URL**, and to nobody else. No accounts, no SDK, no
+schema, no setup.
 
 - **Live**: <https://router.metapage.io/>
 - **Documentation**: <https://router.metapage.io/docs/>
-- **Deploy console**: <https://console.deno.com/metapage/websocket-router>
 
 ```js
-const ws = new WebSocket(
-  "wss://router.metapage.io/a-name-nobody-will-guess",
-);
+const ws = new WebSocket("wss://router.metapage.io/a-name-nobody-will-guess");
 
+ws.binaryType = "arraybuffer";
 ws.onmessage = (event) => console.log("peer said:", event.data);
 ws.onopen = () => ws.send(JSON.stringify({ hello: "world" }));
 ```
@@ -33,164 +31,215 @@ themselves.
 
 `POST` is the exception: it has no socket to exclude, so it reaches everyone.
 
+Text and binary frames are both routed, unchanged and unconverted.
+
 ## What it is not
 
-No persistence, no replay, no delivery guarantees, and no authentication beyond
-the secrecy of the channel name. It is a router, not a broker. See
+No persistence, no replay, no delivery guarantees, and no authentication
+beyond the secrecy of the channel name. It is a router, not a broker. See
 [Guarantees & limits](docs/reference/guarantees.md).
 
 ## Open science infrastructure
 
 This runs as public infrastructure: free to use, and free to walk away from.
 
-A lot of realtime glue in research never gets built, because standing up a server
-is not worth it for one figure, one instrument, or one workshop. The work stays
-on somebody's laptop, or it ends up inside a platform that outlives the grant
-that paid for it. Here a channel is a name — nothing to sign up for, no account
-to be locked out of, no per-seat tier.
+A lot of realtime glue in research never gets built, because standing up a
+server is not worth it for one figure, one instrument, or one workshop. The
+work stays on somebody's laptop, or it ends up inside a platform that outlives
+the grant that paid for it. Here a channel is a name — nothing to sign up for,
+no account to be locked out of, no per-seat tier.
 
-Everything needed to run your own copy is in this repository, [MIT licensed](LICENSE), and [self-hosting](docs/guide/self-hosting.md) is a redis and
-a single process. If `router.metapage.io` disappears tomorrow, change the
-hostname and what you built keeps working.
-
-## Commands
-
-`just` on its own lists everything.
-
-```sh
-just dev          # run locally with --watch on :3077 (needs a redis)
-just test         # integration tests against a disposable redis in docker
-just fmt          # format everything
-just ci           # exactly what CI enforces
-just docs-dev     # live-reloading documentation
-just deploy       # type check, build docs, deploy to Deno Deploy
-```
+Everything needed to run your own copy is in this repository,
+[MIT licensed](LICENSE), and [self-hosting](docs/guide/self-hosting.md) is one
+Node process on one small VM. If `router.metapage.io` disappears tomorrow,
+change the hostname and what you built keeps working.
 
 ## Architecture
 
-Identical stateless instances, connected by redis pub/sub. Only pub/sub is used
-— nothing is written to a key and nothing is persisted.
+One process. The whole of the application state is:
 
-```mermaid
-flowchart TB
-    ca["client A"] --- s1
-    cb["client B"] --- s1
-    cc["client C"] --- s2
-    cd["client D"] --- s3
-
-    subgraph cluster [" "]
-      direction LR
-      s1["router instance 1"]
-      s2["router instance 2"]
-      s3["router instance 3"]
-      redis[("redis pub/sub")]
-      s1 --- redis
-      s2 --- redis
-      s3 --- redis
-    end
+```
+Map<string, Set<WebSocket>>
 ```
 
-A message sent by client A is written directly to A's local peers, and published
-to redis prefixed with the sending instance's id. Every instance receives it; the
-originating one recognises its own prefix and drops it, and the others strip the
-prefix and fan out to their own sockets.
+A message arrives on one socket and is written directly to the other sockets
+on that channel.
 
-Each instance holds exactly **one** redis subscription per channel, however many
-local sockets that channel has. That is what makes delivery exactly-once.
+```mermaid
+flowchart LR
+    ca["client A"] --- s
+    cb["client B"] --- s
+    cc["client C"] --- s
+    s["router process"]
+```
 
-| File                    | Responsibility                                 |
-| ----------------------- | ---------------------------------------------- |
-| `src/serve.ts`          | Entrypoint                                     |
-| `src/server.ts`         | `Deno.serve` plus the websocket/HTTP split     |
-| `src/handlerWs.ts`      | All routing: channels, sockets, redis fan-out  |
-| `src/handlerHttpOak.ts` | HTTP routes and static file serving            |
-| `src/redis/client.ts`   | Publish and subscribe clients                  |
-| `src/id.ts`             | Per-process instance id used for loop breaking |
-| `docs/`                 | The vitepress site served at `/docs`           |
-| `test/integration/`     | Real servers, real redis, real websockets      |
+An earlier version ran several stateless instances joined by Redis pub/sub.
+Redis stored nothing — only pub/sub, no keys, nothing persisted — and existed
+solely so that several processes could reach each other, which the hosting
+platform imposed. One process needs no bus, and removing it made the delivery
+contract *stronger*: there is no cross-instance ordering gap, no window where
+Redis is down and peers silently stop hearing each other, and no instance-id
+prefix on every payload.
+
+> [!IMPORTANT]
+> **Each deployed host is an independent router.** Channel membership lives in
+> one process's memory, so two hosts are two separate routers. Do not put
+> several behind one hostname — a load balancer would split every channel
+> silently, with both peers looking healthy and never hearing each other. Give
+> each host its own name.
+>
+> `deploy/deploy.sh` takes a list of hosts because deploying one build to
+> several independent routers is useful. It is not building a cluster.
+
+| Path | Responsibility |
+| --- | --- |
+| `src/index.ts` | Entrypoint; owns the listeners and shutdown |
+| `src/channels.ts` | The router: channels, subscribers, fan-out |
+| `src/wsServer.ts` | Websocket handling, size limits, keepalives |
+| `src/httpApp.ts` | HTTP routes, and the minimal port-80 redirect app |
+| `src/staticAssets.ts` | Static files, preferring precompressed variants |
+| `src/admin/` | Panel API and session authentication |
+| `src/tls/` | ACME issuance, renewal, certificate storage |
+| `src/config.ts` | Boot-time configuration from the environment |
+| `src/settings.ts` | Runtime settings the admin panel can change |
+| `src/logger.ts` | Rotated JSON logs plus a ring buffer for the panel |
+| `src/reserved.ts` | Paths that cannot be channels |
+| `web/` | Browser bundles: channel page, landing page, admin panel |
+| `docs/` | The vitepress site served at `/docs` |
+| `deploy/` | Host bootstrap, deploy, rollback, status |
+| `test/integration/` | Real processes, real sockets, real ACME |
 
 ## HTTP surface
 
-| Method | Path           | Purpose                                     |
-| ------ | -------------- | ------------------------------------------- |
-| `GET`  | `/`            | Landing page                                |
-| `GET`  | `/docs/*`      | Documentation                               |
-| `GET`  | `/healthcheck` | `OK`                                        |
-| `GET`  | `/:channel`    | Channel page — QR code plus a metaframe     |
-| `POST` | `/:channel`    | Broadcast the request body to all listeners |
-| `WS`   | `/:channel`    | Join the channel                            |
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Landing page |
+| `GET` | `/docs/*` | Documentation |
+| `GET` | `/admin` | [Admin panel](docs/guide/admin.md), if enabled |
+| `GET` | `/healthcheck` | `OK` |
+| `GET` | `/:channel` | Channel page — QR code plus a metaframe |
+| `POST` | `/:channel` | Broadcast the request body to all listeners |
+| `WS` | `/:channel` | Join the channel |
+
+`/admin`, `/docs`, `/healthcheck`, `/_` and `/.well-known` are reserved and
+can never be channel names — enabling the admin panel must not take a name
+somebody was already using.
 
 ## Development
 
-Needs [Deno](https://deno.land) 2.x, [just](https://github.com/casey/just),
-Docker (for the test redis) and Node.js 20+ (for the docs).
+Needs [Node.js 22+](https://nodejs.org),
+[just](https://github.com/casey/just), and Docker for the tests.
 
 ```sh
-docker run -d -p 6379:6379 redis:7-alpine
-just dev
+just install
+just dev          # http://localhost:3077, admin password "dev"
 ```
 
-Configuration is environment variables, from `.env` locally:
-
-| Variable    | Required | Default                  | Purpose                          |
-| ----------- | -------- | ------------------------ | -------------------------------- |
-| `REDIS_URL` | **yes**  | —                        | Redis connection string          |
-| `PORT`      | no       | `3077`                   | Listen port                      |
-| `APP_FQDN`  | no       | `http://localhost:$PORT` | Host encoded in channel QR codes |
-
-CI runs on every push to a branch other than `main` and on pull requests into it:
-formatting, lint, type check, docs build, and the integration suite against a
-redis service container. `just ci` runs the same thing locally.
-
-## Documentation
-
-The docs are a separate npm project in `docs/`, built by vitepress into
-`docs/.vitepress/dist` and mounted by the server at `/docs`.
+`just dev` builds the browser bundles and then watches both sides: `web/`
+changes are rebuilt by Vite and picked up without a restart, `src/` changes
+restart the server.
 
 ```sh
-just docs-dev     # live reload
-just docs-build   # what CI checks; also fails on dead internal links
+just              # list every recipe
+just prod         # full build, NODE_ENV=production, as production runs it
+just check        # type check server, browser and tests
+just build        # server, browser bundles, precompressed assets
+just test         # the integration suite in docker-compose
+just test-acme    # certificate issuance against pebble
+just test-local   # the suite on the host: faster, narrower
+just docs-dev     # live-reloading documentation
+just ci           # everything CI enforces
 ```
 
-`docs/.vitepress/dist` is build output: gitignored, never committed, and built at
-deploy time.
+### Tests
 
-It still reaches production because the `deploy.include` list in `deno.json`
-names it explicitly. `deno deploy` honours `.gitignore`, but an explicitly
-included **plain path** (never a glob) is injected as a `!` negation and
-overrides it. That `include` list is also the complete set of files uploaded —
-15 runtime files plus the built docs — so tests, docs sources and CI config never
-leave your machine.
+Nothing is mocked. Every test starts a real `node dist/server/index.js` and
+drives it over real sockets, because the things this project can get wrong —
+TLS, privilege level, precompressed files on disk, log rotation in a worker
+thread, the process lifecycle — only exist in a real process.
 
-`just deploy` rebuilds the docs, refuses to deploy if they are missing, and
-smoke-tests the live deployment afterwards with `just verify-production`.
+`just test` runs in docker-compose, which is where two requirements can
+actually be verified: the server running as a non-root user, and certificate
+issuance against [pebble](https://github.com/letsencrypt/pebble), Let's
+Encrypt's own test ACME server. `just test-local` is faster but skips both.
+
+See [Contributing](docs/guide/contributing.md).
 
 ## Deployment
 
-Hosted on [Deno Deploy](https://console.deno.com/metapage/websocket-router) (not
-Deploy Classic), against a managed redis configured through `REDIS_URL`.
-
-Because only pub/sub is used, that redis stores nothing. Losing it drops
-in-flight messages and nothing else — there is no state to restore, and no
-migration to run when it is replaced.
+One Node process per host, under pm2, started by systemd, as an unprivileged
+user, with its own Let's Encrypt certificate obtained in-process. No reverse
+proxy, no certbot, no container runtime required.
 
 ```sh
+# once per host, as root
+ssh root@your-host 'bash -s' < deploy/bootstrap.sh
+ssh root@your-host 'nano /opt/websocket-router/env'   # TLS_DOMAINS, TLS_EMAIL, ADMIN_PASSWORD
+
+# then, as often as you like
+echo your-host > deploy/hosts
 just deploy
-just logs        # tail production logs
-just env-list    # what production is using
-just env-push    # load ./.env into the application
 ```
 
-The deploy configuration lives in the `deploy` block of `deno.json` — org, app,
-and the `src/serve.ts` entrypoint. That block takes precedence over anything set
-in the dashboard, so change it here rather than there.
+`bootstrap.sh` is idempotent. It creates the service user, installs Node and
+pm2, registers pm2 with systemd so the router survives a reboot, configures
+`pm2-logrotate`, and grants `CAP_NET_BIND_SERVICE` through a systemd drop-in
+so ports 80 and 443 work **without running as root**.
 
-Authentication uses the device login from `deno deploy login`. Deploy Classic
-`ddp_` tokens are **not** valid — a stale `DENO_DEPLOY_TOKEN` in the environment
-overrides the device login and every deploy fails with `AUTH_INVALID_TOKEN`.
+> Why a capability and not `setcap`: `setcap` on the `node` binary would let
+> *every* Node process on the box bind low ports forever.
+> `AmbientCapabilities` on the unit grants it to this service only, and
+> `CapabilityBoundingSet` caps what it could ever acquire.
 
-`REDIS_URL` (secret) and `APP_FQDN` are set on the application, not baked into a
-deploy. The server throws on startup without `REDIS_URL`.
+`just deploy` builds locally, ships a tarball, and on each host unpacks to a
+timestamped release, installs production dependencies, atomically repoints
+`current`, reloads pm2, and **waits for `/healthcheck`** — rolling back to the
+previous release automatically if it never comes up.
+
+```sh
+just deploy-dry       # build and package, touch no host
+just status           # what each host is running
+just rollback host    # back to the previous release
+just logs host        # tail pm2 output
+just verify https://router.example.com
+```
+
+Release trees are owned by `root:router` and are not writable by the service
+user, so a compromised router process cannot rewrite the code that runs next
+boot.
+
+### TLS
+
+Certificates are obtained and renewed in-process with
+[`acme-client`](https://www.npmjs.com/package/acme-client) over HTTP-01, and
+swapped into the running server with `setSecureContext` — no restart, no
+dropped connections. Port 80 serves ACME challenges and a 301 to https, and
+nothing else.
+
+Point DNS at the host **before** enabling TLS, and test against Let's
+Encrypt's staging directory first. Full lifecycle and troubleshooting in
+[Self-hosting](docs/guide/self-hosting.md#tls-and-certificates).
+
+### Admin panel
+
+Set `ADMIN_PASSWORD` to enable `/admin`, where you can change the maximum
+message size live and read the logs. Unset, the whole subtree returns 404 —
+there is no default credential. See [Admin panel](docs/guide/admin.md).
+
+### Configuration
+
+Environment variables, in `/opt/websocket-router/env` on a deployed host.
+Every one is documented in
+[Configuration](docs/reference/configuration.md); the ones you will actually
+set:
+
+| Variable | Purpose |
+| --- | --- |
+| `TLS_ENABLED`, `TLS_DOMAINS`, `TLS_EMAIL` | Certificates |
+| `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` | Admin panel |
+| `DATA_DIR`, `LOG_DIR` | Writable state and logs |
+| `WS_DEFAULT_MAX_MESSAGE_BYTES` | Starting message size limit |
+| `TRUST_PROXY` | Set behind a reverse proxy |
 
 ## License
 

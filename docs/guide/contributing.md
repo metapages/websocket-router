@@ -1,162 +1,177 @@
 # Contributing
 
-## Setup
+## What you need
+
+- **Node.js 22+** — the server runtime and the build toolchain
+- **[just](https://github.com/casey/just)** — the command runner
+- **Docker** — the test suite runs in containers
 
 ```sh
 git clone https://github.com/metapages/websocket-router
 cd websocket-router
-just            # lists every command
+just install
+just dev          # http://localhost:3077
 ```
 
-You need [Deno](https://deno.land) 2.x, [just](https://github.com/casey/just),
-Docker (for the test redis) and Node.js 20+ (for the docs).
+`just dev` builds the browser bundles, then runs `vite build --watch` and
+`tsx watch` side by side with the admin panel enabled (password `dev`). A
+change under `web/` is rebuilt and picked up without a restart; a change under
+`src/` restarts the server. No configuration file is needed — every setting
+has a working default.
 
-## Before you push
+Use `just prod` to check anything that differs in production: precompressed
+assets, the built docs at `/docs`, and the fact that `NODE_ENV=production`
+turns off the dev-only channel-template reload.
+
+`just` on its own lists every recipe.
+
+## Commands
+
+| | |
+| --- | --- |
+| `just dev` | Watches `web/` and `src/`; rebuilds and restarts as needed |
+| `just dev-once` | The source server, no watchers |
+| `just prod` | Full build, `NODE_ENV=production`, as production runs it |
+| `just build` | Server, browser bundles, precompressed variants |
+| `just build-all` | The above plus the docs. What `deploy.sh` runs. |
+| `just check` | Type check server, browser and test sources |
+| `just test` | The integration suite in docker-compose |
+| `just test-acme` | Certificate issuance against pebble |
+| `just test-all` | Both |
+| `just test-local` | The suite on the host — faster, narrower |
+| `just test-watch` | Watch mode |
+| `just docs-dev` | Live-reloading documentation |
+| `just ci` | Everything CI enforces |
+
+## How the tests work
+
+**Nothing is mocked.** Every test starts a real `node dist/server/index.js`
+process with an environment, and drives it over real sockets. The suite builds
+first, so you are always testing the artefact that ships.
+
+That choice is deliberate. The things this project can get wrong are the
+things only a real process has: TLS, privilege level, precompressed files on
+disk, log rotation in a worker thread, the process lifecycle. A unit test with
+a mocked socket would pass while all of them were broken.
+
+### The two environments
 
 ```sh
-just ci
+just test        # docker-compose: the default, and what CI runs
+just test-local  # the host: faster to iterate
 ```
 
-That runs, in order, exactly what CI runs:
+`just test-local` skips two things it cannot cover:
 
-| Step                      | What it enforces                                                                                    |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `just fmt-check`          | `deno fmt --check` over the whole repository — TypeScript, JavaScript, JSON, CSS, HTML and Markdown |
-| `just lint`               | `deno lint`                                                                                         |
-| `just check`              | `deno check` on the server entrypoint                                                               |
-| `just docs-not-committed` | That build output has not been committed                                                            |
-| `just docs-build`         | The docs build, including vitepress' dead-link check                                                |
-| `just test`               | The integration suite against a disposable redis                                                    |
+- **Non-root operation.** The compose service runs as uid 10001, and the
+  admin stats test asserts `uid != 0` when `EXPECT_NON_ROOT=1`.
+- **Certificate issuance**, which needs pebble.
 
-If formatting fails, `just fmt` fixes it. Formatting is enforced rather than
-suggested, so a CI failure on formatting is never a judgement call.
+Iterate with `just test-local`, then confirm with `just test` before pushing.
 
-## Continuous integration
+### The ACME suite
 
-`.github/workflows/ci.yml` runs on **every push to a branch other than `main`**,
-on pull requests targeting `main`, and on demand via workflow dispatch. There are
-two jobs:
+`just test-acme` brings up [pebble](https://github.com/letsencrypt/pebble) —
+Let's Encrypt's own test ACME server — plus `challtestsrv` for DNS, and runs a
+real issuance: order, HTTP-01 challenge, certificate written to disk, https
+listener, wss round trip over it.
 
-- **quality** — formatting, lint, type check, docs build. Fast, no services.
-- **integration** — the full test suite against a redis service container.
+Mocking `acme-client` instead would test the mock. What can actually break is
+the challenge route, the on-disk key handling, the certificate hot-swap and
+the port-80 redirect, and only a real CA exercises those.
 
-## The test suite
+Two things about the setup are worth knowing before you debug it:
 
-`test/integration/` starts **real server processes** against a **real redis** and
-drives them over **real websockets**. Nothing is mocked, because the behaviour
-worth testing — fan-out across instances — only exists when there are several
-processes and a redis between them.
+- `test/fixtures/pebble.minica.pem` signs **pebble's own listener**, not the
+  certificates pebble issues. Issued certificates chain to a root pebble
+  generates on each start and serves from its management API at `/roots/0`.
+  Confusing the two produces an unknown-issuer error that looks like a router
+  bug. See `test/fixtures/README.md`.
+- pebble validates on port 5002, so the test sets
+  `ACME_SKIP_CHALLENGE_VERIFICATION=true`. acme-client's own pre-flight check
+  always uses port 80 and could never succeed there. **Production leaves that
+  off** — the pre-flight catches a closed port before an order is submitted.
 
-```sh
-just test                    # disposable redis in docker, then the suite
-just test-only               # against whatever REDIS_URL points at
-TEST_SERVER_LOGS=1 just test # stream the servers' own output
-just test-only --filter "no duplicates"
+### Layout
+
+```
+test/
+  helpers/
+    server.ts    starts and stops real server processes
+    client.ts    a websocket that records what it receives, by frame type
+    admin.ts     a cookie-jar client for the admin API
+  integration/
+    routing.test.ts   the delivery contract
+    limits.test.ts    message size, and changing it live
+    admin.test.ts     authentication, settings, logs, stats
+    http.test.ts      routes, compression, caching, traversal
+    logging.test.ts   log structure and rotation
+    acme.test.ts      certificates (compose only)
+  fixtures/
 ```
 
-`test/integration/harness.ts` provides:
+### Writing a test
 
-- `startCluster(n)` — spawns `n` `src/serve.ts` processes on consecutive ports,
-  waits for each `/healthcheck`, and captures their output for failure reports.
-- `TestClient` — a websocket that records every message it receives, so tests
-  assert on exact delivery _counts_ rather than just "something arrived".
-- `randomChannel()` — a fresh channel per step, so steps never interfere.
-- `settle()` — a pause long enough for a message to complete the
-  client → server → redis → server → client round trip, and for any unwanted
-  duplicate to have shown up.
-
-### What it covers
-
-The suite is one `Deno.test` with independent steps, so the cluster starts once:
-
-- the HTTP surface — healthcheck, landing page, `/docs`, channel pages
-- sender exclusion, on one instance and across instances
-- **exactly-once delivery** with many sockets per instance (the regression that
-  motivated the single-subscription-per-channel design)
-- channel isolation, and the fact that leading path segments do not namespace
-- `POST` fan-out to every listener, and `POST` to an empty channel
-- the reserved `ping` prefix, and that pings never reach the channel
-- byte-for-byte payload fidelity, including unicode, empty strings, `:`
-  sequences and 100 KB messages
-- binary frames being dropped without killing the connection
-- per-sender ordering over 250 messages, locally and across instances
-- concurrent senders, asserting per-sender order within an unordered whole
-- rejection of short channel names with close code `1008`
-- disconnects, rapid reconnects, and channel reuse after everybody leaves
-- eight concurrent channels staying separate under load
-
-### Writing a new test
-
-Add a step inside the existing `Deno.test`, and follow the conventions:
+Use `randomChannel()` for a fresh name per test — tests share a server process
+and would otherwise interfere. `TestClient` records text and binary
+separately, so assert on counts rather than "did something arrive":
 
 ```ts
-await step("what should be true", async () => {
-  const channel = randomChannel();
-  const clients = await connectAll([
-    { url: `${i0.ws}/${channel}`, label: "sender@i0" },
-    { url: `${i1.ws}/${channel}`, label: "receiver@i1" },
-  ]);
-  const [sender, receiver] = clients;
-  await settle(); // let the redis subscriptions establish
+const channel = randomChannel();
+const [a, b] = await Promise.all([
+  TestClient.connect(`${server.wsOrigin}/${channel}`, "a"),
+  TestClient.connect(`${server.wsOrigin}/${channel}`, "b"),
+]);
 
-  sender.send("payload");
-  await receiver.waitForMessage("payload");
-  await settle(); // let any duplicate arrive before asserting counts
+a.send("hello");
+await b.waitForTotal(1);
 
-  assertEquals(receiver.countOf("payload"), 1);
-  assertEquals(sender.received, []);
+expect(b.text).toEqual(["hello"]);
+expect(a.total).toBe(0);   // sender exclusion
 
-  await closeAll(clients);
-});
+await closeAll([a, b]);
 ```
 
-Two rules that keep the suite from flaking:
+Prefer `waitForTotal` over a fixed sleep. Use `settle()` only when you need to
+prove something did **not** arrive, where there is nothing to wait for.
 
-1. **`settle()` after connecting**, before sending. A socket is open before the
-   server has finished subscribing to redis, so a message sent immediately can
-   legitimately be missed.
-2. **`settle()` before asserting an absence.** "Nothing arrived" is only
-   meaningful after enough time for something to have arrived.
+Set `TEST_SERVER_LOGS=1` to see what the servers under test are printing.
 
-## Code conventions
+### Keep it deterministic
 
-- Formatting is whatever `deno fmt` produces. Do not argue with it.
-- The router core is `src/handlerWs.ts`. Keep it small and keep it readable —
-  it is the file every contributor reads first.
-- Comments should explain _why_, especially where the code looks odd. The
-  instance-id prefix and the single-subscription-per-channel rule both look
-  arbitrary until you know what they prevent.
-- New behaviour needs a test in `test/integration/`, and a documentation change
-  if it is visible to clients.
+Tests run one file at a time, one worker, because each binds real ports.
+Parallelism here buys only flakiness.
 
-## Documentation
+If you add load-generating tests, generate volume cheaply — `POST` to an empty
+channel is one log line per request. An earlier version of the rotation tests
+opened hundreds of websockets and became flaky through resource pressure
+rather than through any real bug.
 
-The docs are a separate npm project in `docs/`, built by vitepress and served by
-the router at `/docs`. It uses Node rather than Deno on purpose: vitepress does
-not build under Deno's isolated npm layout, because rollup cannot resolve the
-`vue/server-renderer` subpath from `node_modules/.deno/`.
+## Conventions
 
-```sh
-just docs-dev     # live reload while writing
-just docs-build   # what CI checks
-```
+**Comments explain why, not what.** The code says what it does; a comment
+earns its place by recording a constraint, a rejected alternative, or a
+non-obvious consequence. Several in this codebase exist because a plausible
+simpler version was actually wrong.
 
-Vitepress fails the build on dead internal links, so `just docs-build` is a real
-check rather than a formality.
+**Typed strictly.** `strict`, `noUncheckedIndexedAccess` and
+`exactOptionalPropertyTypes` are all on. `just check` type-checks the server,
+the browser bundles and the tests as three separate projects.
 
-`docs/package.json` carries an `overrides` block forcing patched `vite` and
-`esbuild`. Vitepress 1.6.4 asks for versions with published advisories — all of
-them dev-server issues that cannot reach production, since production serves
-prebuilt static files — and vitepress 2 is still alpha. Remove the block when it
-ships.
+**The delivery contract is the contract.** If a change alters anything in
+[Guarantees & limits](/reference/guarantees), that document changes in the
+same commit, and a test pins the new behaviour.
 
-::: warning `docs/.vitepress/dist` is gitignored build output
-It is built at deploy time and never committed. It still reaches production
-because the `deploy.include` list in `deno.json` names the path explicitly:
-`deno deploy` honours `.gitignore`, but an explicitly included **plain path**
-(never a glob) is turned into a `!` negation and overrides it.
+## CI
 
-If you change where the docs are built, change `deploy.include` too, or `/docs`
-will silently disappear from production. `just deploy` verifies the live
-deployment afterwards precisely so that cannot go unnoticed.
-:::
+Every push to a branch and every pull request runs `just ci`: type checks, the
+full build including docs, and the integration suite. The ACME suite runs too,
+in its own job.
+
+## Submitting
+
+1. Branch off `main`.
+2. `just ci` passes locally.
+3. Update the docs in the same commit if behaviour changed.
+4. Open a pull request describing what changed and why. For anything touching
+   the delivery contract, say so explicitly.

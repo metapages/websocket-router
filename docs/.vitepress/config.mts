@@ -11,7 +11,11 @@ export default defineConfig({
   description:
     "A public address space for realtime messages: connect a websocket to a URL and everything you send reaches every other client on that URL.",
   cleanUrls: true,
-  lastUpdated: true,
+  // Reads each page's last commit date, so it needs git and a .git
+  // directory. Neither exists inside the Docker build (the image has no git
+  // and .dockerignore excludes .git), and vitepress treats the failure as
+  // fatal. Off there, on everywhere else.
+  lastUpdated: process.env.VITEPRESS_NO_GIT !== "1",
   head: [["link", { rel: "icon", href: "/favicon.ico" }]],
   markdown: {
     theme: { light: "github-light", dark: "github-dark" },
@@ -50,6 +54,7 @@ export default defineConfig({
         items: [
           { text: "Architecture", link: "/guide/architecture" },
           { text: "Self-hosting", link: "/guide/self-hosting" },
+          { text: "Admin panel", link: "/guide/admin" },
           { text: "Contributing", link: "/guide/contributing" },
         ],
       },

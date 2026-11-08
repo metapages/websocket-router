@@ -3,14 +3,11 @@ set shell         := ["bash", "-c"]
 set dotenv-load   := true
 set export        := true
 
-REDIS_URL         := env_var_or_default("REDIS_URL", "redis://localhost:6379")
-APP_FQDN          := env_var_or_default("APP_FQDN", "localhost:3077")
 PORT              := env_var_or_default("PORT", "3077")
-TEST_REDIS_PORT   := env_var_or_default("TEST_REDIS_PORT", "6399")
-TEST_REDIS_NAME   := "websocket-router-test-redis"
-# Extra flags for `deno deploy`. CI sets this to "--non-interactive" so a
-# missing value fails fast instead of blocking on a prompt nobody can answer.
-DEPLOY_FLAGS      := env_var_or_default("DEPLOY_FLAGS", "")
+APP_FQDN          := env_var_or_default("APP_FQDN", "localhost:3077")
+DATA_DIR          := env_var_or_default("DATA_DIR", "./data")
+ADMIN_PASSWORD    := env_var_or_default("ADMIN_PASSWORD", "")
+LOG_LEVEL         := env_var_or_default("LOG_LEVEL", "info")
 
 ###########################################################################
 # Formatting
@@ -29,80 +26,154 @@ grey              := "\\e[90m"
 	echo -e ""
 	echo -e "    Production URL 🔗     {{ green }}https://router.metapage.io{{ normal }}"
 	echo -e "    Documentation 🔗      {{ green }}https://router.metapage.io/docs/{{ normal }}"
+	echo -e "    Admin panel 🔗        {{ green }}https://router.metapage.io/admin{{ normal }}"
 	echo -e "    Github  URL 🔗        {{ green }}https://github.com/metapages/websocket-router{{ normal }}"
-	echo -e "    Deploy Console URL 🔗 {{ green }}https://console.deno.com/metapage/websocket-router{{ normal }}"
+	echo -e ""
+	echo -e "    {{ grey }}Single process, no broker. Each deployed host is an independent router.{{ normal }}"
 	echo -e ""
 
 ###########################################################################
 # Develop
 ###########################################################################
 
-# Run the server locally, restarting on changes
-dev:
-	deno run -A --watch ./src/serve.ts
+# Install everything (app + docs toolchains)
+install:
+	npm ci --no-audit --no-fund
+	cd docs && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund)
 
-# Run the server locally, the same way deno deploy runs it
-serve:
-	deno run -A ./src/serve.ts
+# Run locally. Rebuilds browser bundles and restarts the server on any change.
+dev:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	# Two watchers: vite rebuilds the browser bundles into dist/web, tsx
+	# restarts the server on a src/ change. The server re-reads the channel
+	# page template when vite rewrites it, so a web edit needs no restart.
+	#
+	# The binaries are invoked directly rather than through npx: `npx` inserts
+	# an `npm exec` wrapper process, and signalling that wrapper leaves the
+	# real `node vite` running. An orphaned watcher keeps rebuilding into
+	# dist/ after you think you have stopped, which is a confusing thing to
+	# debug later.
+	VITE=./node_modules/.bin/vite
+	TSX=./node_modules/.bin/tsx
+	echo -e "{{ blue }}▸ vite build --watch + tsx watch{{ normal }}"
+	# Build once and wait, so the server cannot start before dist/web exists
+	# and fail with "browser bundles are missing".
+	"$VITE" build --logLevel warn
+	"$VITE" build --watch --logLevel warn &
+	vite_pid=$!
+	cleanup() {
+	  # Children first, then the watcher itself.
+	  pkill -P "$vite_pid" 2>/dev/null || true
+	  kill "$vite_pid" 2>/dev/null || true
+	}
+	trap cleanup EXIT INT TERM
+	# tsx stays in the foreground, so Ctrl-C reaches it and the trap above
+	# then cleans up vite. tsx kills its own server child on the way out.
+	ADMIN_PASSWORD="${ADMIN_PASSWORD:-dev}" \
+	LOG_LEVEL="${LOG_LEVEL:-debug}" \
+	  "$TSX" watch src/index.ts
+
+# Run the server from source without watching anything
+dev-once: build-web
+	ADMIN_PASSWORD="${ADMIN_PASSWORD:-dev}" npx tsx src/index.ts
+
+# Run exactly as production does: full build, NODE_ENV=production, no watchers
+prod: build-all
+	#!/usr/bin/env bash
+	set -euo pipefail
+	# TLS stays off unless you set TLS_ENABLED and TLS_DOMAINS yourself; it
+	# needs a public DNS name and port 80, which localhost does not have.
+	echo -e "{{ blue }}▸ production mode on port ${PORT:-3077}{{ normal }}"
+	echo -e "{{ grey }}  docs at /docs, admin at /admin if ADMIN_PASSWORD is set{{ normal }}"
+	NODE_ENV=production node dist/server/index.js
+
+# Alias for `just prod`, kept because the recipe used to be called this
+serve: prod
+
+###########################################################################
+# Build
+###########################################################################
+
+# Everything: server, browser bundles, precompressed variants
+build: build-server build-web compress
+
+@build-server:
+	echo -e "{{ blue }}▸ tsc (server){{ normal }}"
+	npx tsc -p tsconfig.json
+
+@build-web:
+	echo -e "{{ blue }}▸ vite build (browser){{ normal }}"
+	npx vite build
+
+# Write .br and .gz siblings for every compressible build artifact
+@compress:
+	echo -e "{{ blue }}▸ precompress{{ normal }}"
+	node scripts/precompress.mjs
+
+# A full production build, docs included. What deploy.sh runs.
+build-all: build-server build-web docs-build compress
+
+@clean:
+	rm -rf dist docs/.vitepress/dist docs/.vitepress/cache data
 
 ###########################################################################
 # Quality gates (CI runs `just ci`)
 ###########################################################################
 
-# Format every source file in place
-@fmt:
-	deno fmt
-
-# Fail if anything is not formatted. This is what CI enforces.
-@fmt-check:
-	echo -e "{{ blue }}▸ deno fmt --check{{ normal }}"
-	deno fmt --check
-
-@lint:
-	echo -e "{{ blue }}▸ deno lint{{ normal }}"
-	deno lint
-
 @check:
-	echo -e "{{ blue }}▸ deno check{{ normal }}"
-	deno check --allow-import src/serve.ts
+	echo -e "{{ blue }}▸ tsc --noEmit (server, web, tests){{ normal }}"
+	npx tsc -p tsconfig.json --noEmit
+	npx tsc -p tsconfig.web.json --noEmit
+	npx tsc -p tsconfig.test.json --noEmit
 
 # Everything CI enforces, in the order CI runs it
-ci: fmt-check lint check docs-not-committed docs-build test
+ci: check build-all test-local
 
 ###########################################################################
 # Test
 ###########################################################################
 
-# Integration tests against a disposable redis started in docker
+# The suite in docker-compose: non-root, as production runs it. The default.
 test:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	cleanup() { docker rm -f "{{ TEST_REDIS_NAME }}" >/dev/null 2>&1 || true; }
-	trap cleanup EXIT
-	cleanup
-	echo -e "{{ blue }}▸ starting test redis on port {{ TEST_REDIS_PORT }}{{ normal }}"
-	docker run -d --rm --name "{{ TEST_REDIS_NAME }}" \
-	  -p "{{ TEST_REDIS_PORT }}:6379" redis:7-alpine >/dev/null
-	for _ in $(seq 1 40); do
-	  if docker exec "{{ TEST_REDIS_NAME }}" redis-cli ping >/dev/null 2>&1; then break; fi
-	  sleep 0.25
-	done
-	REDIS_URL="redis://localhost:{{ TEST_REDIS_PORT }}" just test-only
+	echo -e "{{ blue }}▸ integration suite (docker-compose){{ normal }}"
+	trap 'docker compose -f docker-compose.test.yml down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+	docker compose -f docker-compose.test.yml build tests
+	docker compose -f docker-compose.test.yml run --rm tests
 
-# Integration tests against whatever REDIS_URL already points at
-@test-only +args="":
-	echo -e "{{ blue }}▸ deno test (REDIS_URL=$REDIS_URL){{ normal }}"
-	deno test --allow-all --no-check test/integration/ {{ args }}
+# The ACME suite against pebble, Let's Encrypt's test server
+test-acme:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	echo -e "{{ blue }}▸ ACME suite (pebble){{ normal }}"
+	trap 'docker compose -f docker-compose.test.yml --profile acme down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+	docker compose -f docker-compose.test.yml --profile acme build acme-tests
+	docker compose -f docker-compose.test.yml --profile acme run --rm acme-tests
+
+# Everything, including ACME
+test-all: test test-acme
+
+# On the host, without docker. Faster to iterate; skips non-root and ACME.
+test-local +args="": build
+	#!/usr/bin/env bash
+	set -euo pipefail
+	echo -e "{{ blue }}▸ integration suite (host){{ normal }}"
+	echo -e "{{ grey }}  non-root and ACME coverage need \`just test\` / \`just test-acme\`{{ normal }}"
+	npx vitest run {{ args }}
+
+# Watch mode against the host
+test-watch: build
+	npx vitest
 
 ###########################################################################
 # Documentation (vitepress, served by the router at /docs)
 ###########################################################################
 
-# Install the docs toolchain (node + npm, separate from the deno app)
 @docs-install:
-	cd docs && npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+	cd docs && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund)
 
-# Live-reloading docs while writing them
 docs-dev: _docs-ensure-install
 	cd docs && npm run dev
 
@@ -126,10 +197,6 @@ docs-build: _docs-ensure-install
 	  exit 1; \
 	fi
 
-# Serve the built docs standalone, without the router
-docs-preview: docs-build
-	cd docs && npm run preview
-
 @_docs-ensure-install:
 	if [ ! -d docs/node_modules ]; then just docs-install; fi
 
@@ -137,42 +204,36 @@ docs-preview: docs-build
 # Deploy
 ###########################################################################
 
-# Deploy to Deno Deploy production. Deploy config lives in the `deploy` block of deno.json.
-deploy: check docs-build
+# One-time setup for a new host: user, node, pm2, systemd, capabilities
+bootstrap host:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	# The docs are gitignored build output that only reaches production because
-	# `deploy.include` in deno.json names the path explicitly. `docs-build` above
-	# just made them; refuse to deploy if it did not.
-	if [ ! -f docs/.vitepress/dist/index.html ]; then
-	  echo -e "{{ magenta }}docs/.vitepress/dist is missing; refusing to deploy without /docs.{{ normal }}"
-	  exit 1
-	fi
-	# `deno deploy` intermittently hangs mid-upload and is then killed by Deno's
-	# top-level-await watchdog with exit 1, even when nothing is wrong. Deploys
-	# create a fresh revision each time, so retry and treat the run as successful
-	# only when the CLI prints its genuine confirmation line.
-	attempts=3
-	for i in $(seq 1 $attempts); do
-	  echo -e "{{ blue }}deno deploy attempt $i/$attempts{{ normal }}"
-	  set +e
-	  timeout 420 deno deploy --prod $DEPLOY_FLAGS 2>&1 | tee deploy.log
-	  code=${PIPESTATUS[0]}
-	  set -e
-	  if grep -q "Successfully deployed your application" deploy.log; then
-	    echo -e "{{ green }}Deploy succeeded.{{ normal }}"
-	    rm -f deploy.log
-	    just verify-production
-	    exit 0
-	  fi
-	  echo -e "{{ yellow }}Deploy attempt $i did not confirm success (exit $code); retrying...{{ normal }}"
-	  sleep 5
-	done
-	echo -e "{{ magenta }}Deploy failed after $attempts attempts.{{ normal }}"
-	exit 1
+	echo -e "{{ blue }}▸ bootstrapping {{ host }}{{ normal }}"
+	ssh root@{{ host }} 'bash -s' < deploy/bootstrap.sh
+	echo -e "{{ yellow }}Now edit /opt/websocket-router/env on {{ host }}, then \`just deploy\`.{{ normal }}"
 
-# Smoke test production over the network. Run by `just deploy`.
-verify-production url="https://router.metapage.io":
+# Build and deploy to every host in deploy/hosts
+deploy *hosts:
+	./deploy/deploy.sh {{ hosts }}
+
+# Show what a deploy would do, without touching a host
+deploy-dry *hosts:
+	DRY_RUN=1 ./deploy/deploy.sh {{ hosts }}
+
+# Point `current` back at the previous release
+rollback *args:
+	./deploy/rollback.sh {{ args }}
+
+# What every host is running
+status *hosts:
+	./deploy/status.sh {{ hosts }}
+
+# Tail the router's logs on a host
+logs host lines="100":
+	ssh root@{{ host }} "sudo -u router -H pm2 logs websocket-router --lines {{ lines }}"
+
+# Smoke test a deployment over the network
+verify url="https://router.metapage.io":
 	#!/usr/bin/env bash
 	set -euo pipefail
 	url="{{ url }}"
@@ -194,36 +255,31 @@ verify-production url="https://router.metapage.io":
 	echo -e "{{ blue }}▸ verifying $url{{ normal }}"
 	check /healthcheck 200 OK
 	check / 200 "except the sender"
-	# The docs are gitignored build output; if `deploy.include` ever stops
-	# naming them, this is what catches it.
-	#
 	# Every needle here must be something ONLY the built docs emit. Any
 	# unmatched path is served the channel page, so a needle as generic as the
-	# site name passes even when /docs was never uploaded at all - which is
-	# exactly how a stale deployment slipped past an earlier version of this.
+	# site name passes even when /docs was never built at all.
 	check /docs/ 200 'name="generator" content="VitePress'
 	check /docs/guide/introduction 200 "vp-doc"
 	check /docs/reference/api 200 "POST /:channel"
-	# A channel name must NOT be served documentation. This is the other half of
-	# the check above: together they prove /docs is a real mount rather than the
-	# catch-all swallowing everything.
+	# A channel name must NOT be served documentation. This is the other half
+	# of the check above: together they prove /docs is a real mount rather
+	# than the catch-all swallowing everything.
 	check /verify-not-a-docs-page 200 qrimage
+	echo -e "{{ blue }}▸ compression{{ normal }}"
+	enc=$(curl -sS -H 'Accept-Encoding: br' -o /dev/null -w '%{content_type}' "$url/" || true)
+	bundle=$(curl -sS "$url/" | grep -o '/_/assets/[^"]*\.js' | head -1 || true)
+	if [ -n "$bundle" ]; then
+	  got=$(curl -sS -H 'Accept-Encoding: br' -D- -o /dev/null "$url$bundle" | tr -d '\r' | awk -F': ' '/^[Cc]ontent-[Ee]ncoding/{print $2}')
+	  if [ "$got" = "br" ]; then
+	    echo -e "  {{ green }}✓ $bundle -> brotli{{ normal }}"
+	  else
+	    echo -e "  {{ magenta }}✗ $bundle -> content-encoding '$got' (expected br){{ normal }}"; fail=1
+	  fi
+	fi
 	echo -e "{{ blue }}▸ websocket round trip{{ normal }}"
-	deno run --quiet --allow-net ./test/verify-production.ts "$url" || fail=1
+	node ./scripts/verify-production.mjs "$url" || fail=1
 	if [ "$fail" != "0" ]; then
-	  echo -e "{{ magenta }}Production verification FAILED.{{ normal }}"
+	  echo -e "{{ magenta }}Verification FAILED.{{ normal }}"
 	  exit 1
 	fi
-	echo -e "{{ green }}Production verified.{{ normal }}"
-
-# Tail the production logs
-logs:
-	deno deploy logs
-
-# Push the local .env values into the Deno Deploy application
-env-push:
-	deno deploy env load .env
-
-# Show the environment variables configured on the Deno Deploy application
-env-list:
-	deno deploy env list
+	echo -e "{{ green }}Verified.{{ normal }}"

@@ -1,22 +1,29 @@
-.deno
+# --- build output ---
+dist/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+# Precompressed siblings written by `npm run compress`. The ones under dist/
+# and docs/ are already covered above; these are the /public originals, whose
+# sources ARE tracked.
+public/**/*.br
+public/**/*.gz
+
+# --- dependencies ---
+node_modules/
+
+# --- runtime state: settings, ACME keys and certificates, logs ---
+data/
+*.log
+
+# --- local configuration and secrets ---
 .env
-node_modules
-deploy.log
+.env.local
+# The list of hosts to deploy to is per-operator; hosts.example is tracked.
+deploy/hosts
 
-# CI points DENO_DIR here, inside the workspace, because the `runner` context
-# needed to put it anywhere else is unavailable in workflow env. This line is
-# what stops `deno fmt` and `deno lint` walking several hundred downloaded npm
-# files and failing on code that is not ours. Removing it breaks CI.
-.deno-cache
-
-# The docs toolchain is a separate npm project.
-docs/node_modules
-docs/.vitepress/cache
-
-# Built documentation. `just deploy` rebuilds it immediately before uploading.
-#
-# `deno deploy` honours .gitignore, so this line would normally strip /docs out
-# of production. It does not, because the `deploy.include` list in deno.json
-# names this path explicitly, and an explicitly included plain path overrides
-# .gitignore. Keep the two in sync.
-docs/.vitepress/dist
+# --- editors and OS ---
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/settings.json

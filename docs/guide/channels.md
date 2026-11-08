@@ -58,14 +58,12 @@ const channel = `user-${userId}`;
 
 ## Lifecycle
 
-1. The first client connects. The server instance registers the socket and
-   subscribes to the redis channel of the same name.
-2. More clients connect, to this instance or any other. Each instance keeps
-   exactly one redis subscription per channel, regardless of how many local
-   sockets it has.
-3. The last client on an instance disconnects. That instance unsubscribes.
-4. When no instance anywhere has a listener, nothing about the channel exists.
-   Redis pub/sub keeps no state for channels with no subscribers.
+1. The first client connects. The server adds the socket to a set keyed by
+   the channel name, creating the set if it did not exist.
+2. More clients connect and join the same set.
+3. Clients disconnect and are removed from it.
+4. The last client leaves and the set is deleted. Nothing about the channel
+   exists any more — not a record that it once did.
 
 Because channels are pure convention, **a message sent to a channel with no
 listeners is silently discarded**. There is no error, no buffering, and no way

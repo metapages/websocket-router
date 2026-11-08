@@ -1,0 +1,13 @@
+# Never copied by either Dockerfile; excluded so a local install or build
+# cannot leak into an image or bust the layer cache.
+node_modules
+docs/node_modules
+docs/.vitepress/dist
+docs/.vitepress/cache
+dist
+data
+.git
+.github
+*.log
+.env
+deploy/hosts

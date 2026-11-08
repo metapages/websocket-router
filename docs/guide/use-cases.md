@@ -63,7 +63,7 @@ are connected. No tunnel, no ngrok, no port forwarding, no inbound firewall rule
 — both sides make outbound connections.
 
 ```js
-// on your laptop, deno run -A bridge.ts
+// on your laptop, node bridge.mjs
 const ws = new WebSocket(`wss://router.metapage.io/${channel}`);
 ws.onmessage = async (e) => {
   const result = await runLocally(JSON.parse(e.data));

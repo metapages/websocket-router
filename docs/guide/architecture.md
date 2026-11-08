@@ -1,116 +1,153 @@
 # Architecture
 
-The whole system is a few hundred lines. This page is the mental model you need
-to reason about its behaviour under load and failure.
+One Node process. The whole of the application state is a map from channel
+name to the set of sockets listening on it.
 
-## Shape
-
-```mermaid
-flowchart TB
-    ca["client A"] --- s1
-    cb["client B"] --- s1
-    cc["client C"] --- s2
-    cd["client D"] --- s3
-
-    subgraph cluster [" "]
-      direction LR
-      s1["router instance 1"]
-      s2["router instance 2"]
-      s3["router instance 3"]
-      redis[("redis pub/sub")]
-      s1 --- redis
-      s2 --- redis
-      s3 --- redis
-    end
+```
+Map<string, Set<WebSocket>>
 ```
 
-Every instance is identical and stateless apart from the sockets it happens to
-be holding. Redis is the only shared component, and only its **pub/sub** is used
-— nothing is written to a key, nothing is persisted, nothing is read back.
+That is not a simplification for the sake of the diagram. It is the data
+structure, in `src/channels.ts`.
 
-## The path of a message
+```mermaid
+flowchart LR
+    ca["client A"] --- s
+    cb["client B"] --- s
+    cc["client C"] --- s
+    cd["client D"] --- s
+    s["router process"]
+```
 
-Client A, connected to instance 1, sends `hello` on channel `room-8f2a1c`:
+A message arrives on one socket and is written directly to the other sockets
+on that channel. There is no hop in between, nothing to serialise it through,
+and nothing to be down.
 
-1. Instance 1 writes `hello` directly to every other socket it holds on
-   `room-8f2a1c`. Client B receives it. Client A does not — the sender is
-   excluded by identity, not by any id in the payload.
-2. Instance 1 publishes `<instance-1-id>:hello` to the redis channel
-   `room-8f2a1c`.
-3. Every instance subscribed to that channel receives the publication —
-   including instance 1 itself.
-4. Instance 1 sees its own id prefix and drops the message. That prefix is the
-   entire loop-prevention mechanism.
-5. Instances 2 and 3 strip the prefix and write `hello` to all their sockets on
-   the channel. Clients C and D receive it.
+## What changed, and why
 
-The instance id is six random alphanumeric characters generated at process
-start, and the prefix is stripped before delivery, so clients never see it.
+An earlier version ran several identical stateless instances joined by Redis
+pub/sub. Each instance held the same in-memory map, published every message to
+Redis prefixed with its own instance id, and dropped its own echo on the way
+back.
 
-## One subscription per channel per instance
+Redis was never storing anything — only pub/sub was used, no keys were
+written, nothing was persisted. Its sole job was letting several processes
+reach each other. That was necessary because the hosting platform ran several
+processes whether or not that was wanted.
 
-An instance holds **exactly one** redis subscription per channel no matter how
-many local sockets that channel has. The first socket subscribes; the last one
-to leave unsubscribes.
+One process needs no bus, and removing it made the delivery contract
+**stronger**, not weaker. These caveats simply stopped existing:
 
-This matters for correctness, not just efficiency. Redis invokes every
-registered listener, and each listener fans out to all local sockets — so
-subscribing per socket would deliver N copies to each of N local sockets. One
-subscription per channel is what makes exactly-once local delivery hold.
+- *"Peers on the sender's own instance receive slightly before peers
+  elsewhere"* — there is one instance.
+- *"Redis unreachable: cross-instance delivery stops, senders are not told"* —
+  there is nothing to be unreachable.
+- The instance-id prefix stripped off every payload, and the one-subscription-
+  per-channel-per-instance bookkeeping that made delivery exactly-once.
 
-The unsubscribe path removes the channel from the local map _before_ awaiting
-redis, so a client reconnecting during that round trip creates a fresh
-subscription rather than racing the teardown.
+The cost is real and worth stating plainly: a deployment is one process.
 
-## Consequences of the design
+## The consequence: a host is a router
 
-**Horizontal scaling is free for connections.** Instances share nothing, so
-adding one adds capacity for sockets immediately. Client-to-instance assignment
-does not matter.
+Channel membership lives in one process's memory. Two hosts are two
+independent routers that happen to run the same code.
 
-**Redis is the throughput ceiling.** Every message crosses it once, regardless
-of how many clients are on the sending instance. Fan-out cost is
-`O(instances subscribed)` on redis and `O(local sockets)` on each instance.
+::: warning
+Do not put several hosts behind one hostname. A load balancer would split
+every channel silently — two peers connect, both look healthy, and never hear
+each other. Give each host its own name.
+:::
 
-**Redis is the single point of failure — partially.** If redis is unreachable,
-clients on the same instance still reach each other, because local delivery is
-direct. Cross-instance delivery stops. Publish and subscribe failures are logged
-and swallowed; senders are not told.
+`deploy/deploy.sh` accepts a list of hosts because deploying one build to
+several independent routers is useful. It is not building a cluster. See
+[Self-hosting](/guide/self-hosting).
 
-**Nothing survives a restart.** Sockets die with the process and channels cease
-to exist. Clients must reconnect, and they will re-establish channels
-automatically as they do.
+Scaling is therefore vertical, which is also why pm2 runs in `fork` mode with
+`instances: 1`. Cluster mode here would not be a performance win; it would be
+the same correctness bug inside a single box.
 
-**No backpressure anywhere.** A fast sender with slow receivers buffers in the
-server process. This is the main thing to be careful about at high message
-rates; see [rate limiting yourself](/guide/patterns#rate-limiting-yourself).
+## Request routing
 
-## HTTP surface
+Every path that is not something else is a channel. The exceptions are a short
+reserved list, in `src/reserved.ts`:
 
-The same process serves plain HTTP on the same port, via
-[oak](https://jsr.io/@oak/oak):
+| Prefix | |
+| --- | --- |
+| `/healthcheck` | `OK` |
+| `/docs` | the documentation site |
+| `/admin` | the [admin panel](/guide/admin) |
+| `/_` | browser bundles |
+| `/.well-known` | ACME challenges |
 
-| Route              | Purpose                                            |
-| ------------------ | -------------------------------------------------- |
-| `GET /`            | Landing page                                       |
-| `GET /docs/*`      | This documentation, built by vitepress             |
-| `GET /healthcheck` | Liveness probe, returns `OK`                       |
-| `POST /:channel`   | Broadcast the request body to all listeners        |
-| `GET /:channel`    | The channel page — QR code plus a metaframe bridge |
+These are reserved **whether or not the feature behind them is enabled**, and
+by both the HTTP stack and the websocket upgrade handler. Two reasons:
 
-An upgrade request is routed to the websocket handler; everything else goes to
-oak. CORS is open on every route, deliberately: clients are arbitrary pages on
-arbitrary origins.
+- enabling the admin panel must never take a channel name somebody was
+  already using;
+- a name that means one thing over HTTP and another over a websocket is a
+  trap, when the security model is that a channel name is a secret.
 
-## Source layout
+Everything else — `GET /:channel` renders the channel page, `POST /:channel`
+broadcasts, a websocket upgrade joins.
 
-| File                    | Responsibility                                          |
-| ----------------------- | ------------------------------------------------------- |
-| `src/serve.ts`          | Entrypoint — reads `PORT`/`APP_FQDN`, starts the server |
-| `src/server.ts`         | `Deno.serve` plus the websocket/HTTP split              |
-| `src/handlerWs.ts`      | All routing: channels, sockets, redis fan-out           |
-| `src/handlerHttpOak.ts` | HTTP routes and static file serving                     |
-| `src/redis/client.ts`   | The publish and subscribe clients                       |
-| `src/id.ts`             | The per-process instance id used for loop breaking      |
+## The pieces
 
-`src/handlerWs.ts` is the file to read if you read only one.
+| File | Responsibility |
+| --- | --- |
+| `src/index.ts` | Entrypoint. Owns the listeners and shutdown. |
+| `src/channels.ts` | The router: channels, subscribers, fan-out. |
+| `src/wsServer.ts` | Websocket handling, size limits, keepalives. |
+| `src/httpApp.ts` | HTTP routes, and the minimal port-80 redirect app. |
+| `src/staticAssets.ts` | Static files, preferring precompressed variants. |
+| `src/channelPage.ts` | QR code injection into the built channel page. |
+| `src/admin/` | Panel API and session authentication. |
+| `src/tls/` | ACME issuance, renewal, and on-disk certificate storage. |
+| `src/config.ts` | Boot-time configuration from the environment. |
+| `src/settings.ts` | Runtime settings the panel can change. |
+| `src/logger.ts` | Rotated JSON logs plus an in-memory ring for the panel. |
+| `src/reserved.ts` | Paths that cannot be channels. |
+| `web/channel/` | The channel page and landing page bundles. |
+| `web/admin/` | The admin panel bundle. |
+| `test/integration/` | Real processes, real sockets, real ACME. |
+
+## The browser side
+
+Vite builds three bundles into `dist/web`, served under `/_/` with
+content-hashed filenames and a one-year immutable cache.
+
+The channel page previously loaded `@metapages/*` and
+`reconnecting-websocket` from a CDN at runtime, which made every channel page
+depend on jsdelivr being up. They are npm dependencies now and ship inside
+the bundle.
+
+## Compression
+
+Static assets are compressed **at build time**, not per request:
+`npm run compress` writes a `.br` and a `.gz` beside every compressible
+artifact, and the server picks whichever the client accepts and streams it
+straight off disk.
+
+That ordering is the point. Brotli at quality 11 is far too slow to run per
+request, and free when it was done once — about 77% smaller than the
+originals on this codebase. Dynamic responses (the channel page, admin JSON)
+are gzipped on the fly instead, where the CPU cost is proportionate.
+
+Every response carries `Vary: Accept-Encoding`, because the same URL now has
+up to three representations and a shared cache that ignores this would hand
+brotli to a client that cannot read it.
+
+## Failure behaviour
+
+| Failure | Result |
+| --- | --- |
+| Process restarts | Every connection closes with 1001 "going away". Clients reconnect; missed messages are gone. |
+| Process crashes | pm2 restarts it, backing off, and gives up after 10 failures in quick succession rather than crash-looping quietly. |
+| Host reboots | systemd starts pm2, pm2 starts the router. |
+| Certificate renewal fails | Logged, retried on the next check. The existing certificate keeps serving. |
+| A client stops reading | Messages to that socket are dropped once 8 MB is unflushed. Other clients are unaffected. |
+| Oversize frame | Socket closed with 1009. |
+| Disk fills with logs | It should not: retention is bounded by `LOG_RETAIN_FILES × LOG_MAX_SIZE`. |
+
+A deploy closing every connection is within the contract, not an incident —
+see [Guarantees & limits](/reference/guarantees). Clients are expected to
+reconnect, and the reference client does.

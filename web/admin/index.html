@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Router admin</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./main.ts"></script>
+  </head>
+  <body>
+    <!-- Login. Replaced by the panel once a session exists. -->
+    <main id="login" hidden>
+      <form id="login-form" autocomplete="on">
+        <h1>Router admin</h1>
+        <label for="password">Admin password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+        <button type="submit">Sign in</button>
+        <p id="login-error" class="error" role="alert" hidden></p>
+      </form>
+    </main>
+
+    <main id="panel" hidden>
+      <header>
+        <h1>Router admin</h1>
+        <div class="header-actions">
+          <span id="uptime" class="muted"></span>
+          <button id="logout" type="button" class="secondary">Sign out</button>
+        </div>
+      </header>
+
+      <section class="cards" id="stats"></section>
+
+      <section class="block">
+        <h2>Settings</h2>
+        <form id="settings-form">
+          <label for="max-message">
+            Maximum message size
+            <span class="hint">
+              Applies to websocket frames and POST bodies. A websocket sending
+              more than this is closed with code 1009.
+            </span>
+          </label>
+          <div class="field-row">
+            <input id="max-message" type="number" min="1" step="1" required />
+            <select id="max-message-unit">
+              <option value="1">bytes</option>
+              <option value="1024">KiB</option>
+              <option value="1048576" selected>MiB</option>
+            </select>
+            <button type="submit">Save</button>
+          </div>
+          <p id="settings-status" class="status" role="status"></p>
+        </form>
+      </section>
+
+      <section class="block">
+        <div class="block-header">
+          <h2>Logs</h2>
+          <div class="controls">
+            <select id="log-level">
+              <option value="all">all levels</option>
+              <option value="trace">trace</option>
+              <option value="debug">debug</option>
+              <option value="info" selected>info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+              <option value="fatal">fatal</option>
+            </select>
+            <select id="log-source">
+              <option value="memory" selected>recent (memory)</option>
+              <option value="disk">history (files)</option>
+            </select>
+            <select id="log-limit">
+              <option value="100">100 lines</option>
+              <option value="200" selected>200 lines</option>
+              <option value="500">500 lines</option>
+              <option value="2000">2000 lines</option>
+            </select>
+            <label class="checkbox">
+              <input id="log-follow" type="checkbox" checked /> follow
+            </label>
+          </div>
+        </div>
+        <pre id="logs" class="logs" aria-live="polite"></pre>
+        <p id="log-files" class="muted"></p>
+      </section>
+    </main>
+  </body>
+</html>

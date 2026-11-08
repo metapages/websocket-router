@@ -23,19 +23,17 @@ concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-env:
-  # This lives inside the workspace, which means `deno fmt` and `deno lint`
-  # would walk every downloaded npm package once the cache restores. They do
-  # not, because `.deno-cache` is gitignored and both commands honour it. Do
-  # not remove that .gitignore line.
-  #
-  # `runner.temp` would put it outside the checkout instead, but the `runner`
-  # context is not available in workflow-level or job-level env, only in steps.
-  DENO_DIR: ${{ github.workspace }}/.deno-cache
+permissions:
+  contents: read
 
 jobs:
+  # ---------------------------------------------------------------------
+  # Type checks and the full build, including the docs. The docs build is
+  # part of CI because vitepress fails on dead internal links, which makes
+  # it the only check that catches a renamed page.
+  # ---------------------------------------------------------------------
   quality:
-    name: Format, lint, type check, docs
+    name: Type check and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -49,104 +47,101 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - uses: extractions/setup-just@v2
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-          cache-dependency-path: docs/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            docs/package-lock.json
 
-      - name: Cache deno dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.DENO_DIR }}
-          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
-          restore-keys: deno-${{ runner.os }}-
-
-      # Formatting is a hard gate: `just fmt` fixes anything this reports.
-      - name: Check formatting
-        run: just fmt-check
-
-      - name: Lint
-        run: just lint
+      - name: Install
+        run: |
+          npm ci --no-audit --no-fund
+          cd docs && npm ci --no-audit --no-fund
 
       - name: Type check
-        run: just check
+        run: |
+          npx tsc -p tsconfig.json --noEmit
+          npx tsc -p tsconfig.web.json --noEmit
+          npx tsc -p tsconfig.test.json --noEmit
 
-      # docs/.vitepress/dist is gitignored build output, produced at deploy
-      # time. It reaches production only via the `deploy.include` list in
-      # deno.json, so a `git add -f` of it would be silently redundant and then
-      # silently stale.
-      - name: Check built docs are not committed
-        run: just docs-not-committed
+      - name: Build output must not be committed
+        run: |
+          for path in dist docs/.vitepress/dist; do
+            if [ -n "$(git ls-files "$path")" ]; then
+              echo "::error::$path is build output and must not be committed"
+              exit 1
+            fi
+          done
 
-      # Also fails on dead internal links in the documentation.
-      - name: Build documentation
-        run: just docs-build
+      - name: Build
+        run: |
+          npm run build:server
+          npm run build:web
+          cd docs && npm run build && cd ..
+          npm run compress
 
-  integration:
-    name: Integration tests
+      - name: Precompressed variants exist
+        run: |
+          # The server serves .br/.gz siblings directly; if the compress step
+          # silently produced nothing, every asset would quietly fall back to
+          # uncompressed and nothing else would fail.
+          count=$(find dist/web docs/.vitepress/dist -name '*.br' | wc -l)
+          echo "found $count brotli variants"
+          [ "$count" -gt 0 ] || { echo "::error::no .br files were produced"; exit 1; }
+
+  # ---------------------------------------------------------------------
+  # The integration suite, in containers. Running it here rather than on the
+  # runner directly is what covers non-root operation.
+  # ---------------------------------------------------------------------
+  test:
+    name: Integration suite
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
-    # See the identical guard on `quality`.
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
 
-    env:
-      REDIS_URL: redis://localhost:6379
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: extractions/setup-just@v2
+
+      - name: Run the suite
+        run: just test
+
+      - name: Server output on failure
+        if: failure()
+        run: docker compose -f docker-compose.test.yml logs --no-color || true
+
+  # ---------------------------------------------------------------------
+  # Certificate issuance against pebble, Let's Encrypt's test ACME server.
+  # Separate job: it needs extra services and is the slowest thing here.
+  # ---------------------------------------------------------------------
+  acme:
+    name: Certificate issuance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
+      - uses: docker/setup-buildx-action@v3
 
       - uses: extractions/setup-just@v2
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
+      - name: Run the ACME suite
+        run: just test-acme
 
-      - name: Cache deno dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.DENO_DIR }}
-          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock', 'deno.json') }}
-          restore-keys: deno-${{ runner.os }}-
-
-      # The docs are build output and are not in the checkout, but the suite
-      # asserts that /docs is served. Build them so that coverage is real rather
-      # than skipped.
-      - name: Build documentation
-        run: just docs-build
-
-      # Warm the module cache so the servers the tests spawn start immediately
-      # rather than downloading dependencies inside the health-check timeout.
-      - name: Warm dependency cache
-        run: just check
-
-      - name: Integration tests
-        run: just test-only
-        env:
-          TEST_SERVER_LOGS: "1"
+      - name: Pebble and server output on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.test.yml --profile acme logs --no-color || true

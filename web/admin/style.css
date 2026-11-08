@@ -1,0 +1,169 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg-soft: #f6f7f9;
+  --bg-code: #0f1116;
+  --fg: #16181d;
+  --fg-soft: #5c6370;
+  --line: #e3e6ea;
+  --accent: #1f6feb;
+  --danger: #c0392b;
+  --warn: #b45309;
+  --ok: #15803d;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1116;
+    --bg-soft: #161920;
+    --bg-code: #080a0e;
+    --fg: #e6e8ec;
+    --fg-soft: #9aa3b2;
+    --line: #262b36;
+    --accent: #58a6ff;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --ok: #4ade80;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 { font-size: 1.35rem; margin: 0; }
+h2 { font-size: 1rem; margin: 0 0 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-soft); }
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.5rem;
+}
+
+.header-actions { display: flex; align-items: center; gap: 1rem; }
+.muted { color: var(--fg-soft); font-size: 0.85rem; }
+
+/* login ------------------------------------------------------------ */
+
+#login { max-width: 22rem; padding-top: 18vh; }
+#login form { display: flex; flex-direction: column; gap: 0.6rem; }
+#login h1 { margin-bottom: 0.5rem; }
+
+label { font-size: 0.9rem; font-weight: 500; display: block; }
+.hint { display: block; font-weight: 400; color: var(--fg-soft); font-size: 0.82rem; margin-top: 0.15rem; }
+
+input, select, button {
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover { filter: brightness(1.08); }
+button.secondary { background: transparent; color: var(--fg-soft); border-color: var(--line); }
+
+.error { color: var(--danger); font-size: 0.88rem; margin: 0.25rem 0 0; }
+.status { font-size: 0.88rem; min-height: 1.3em; margin: 0.5rem 0 0; color: var(--fg-soft); }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--danger); }
+
+/* panel ------------------------------------------------------------ */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.card {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.8rem 0.9rem;
+}
+
+.card .value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .label { font-size: 0.78rem; color: var(--fg-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.controls select { padding: 0.3rem 0.45rem; font-size: 0.85rem; }
+.checkbox { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-weight: 400; }
+.checkbox input { padding: 0; }
+
+.field-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; }
+.field-row input[type="number"] { width: 9rem; }
+
+/* logs -------------------------------------------------------------- */
+
+.logs {
+  background: var(--bg-code);
+  color: #d7dce5;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  margin: 0.75rem 0 0;
+  height: 26rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logs .line { display: block; }
+.logs .t { color: #6b7585; }
+.logs .lvl { font-weight: 600; }
+.logs .lvl-error, .logs .lvl-fatal { color: var(--danger); }
+.logs .lvl-warn { color: var(--warn); }
+.logs .lvl-info { color: #60a5fa; }
+.logs .lvl-debug, .logs .lvl-trace { color: #6b7585; }
+.logs .extra { color: #8b93a1; }

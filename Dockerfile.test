@@ -1,0 +1,37 @@
+# The test runner. Has the dev dependencies (vitest, ws) and the built server,
+# and spawns real server processes the same way production does.
+FROM node:24-bookworm-slim
+WORKDIR /app
+
+RUN groupadd --gid 10001 router \
+ && useradd --uid 10001 --gid router --home-dir /app --no-create-home router
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY docs/package.json docs/package-lock.json ./docs/
+RUN cd docs && npm ci --no-audit --no-fund
+
+COPY tsconfig.json tsconfig.web.json tsconfig.test.json vite.config.ts vitest.config.ts ./
+COPY src ./src
+COPY web ./web
+COPY public ./public
+COPY scripts ./scripts
+COPY docs ./docs
+COPY test ./test
+
+# vitepress reads git history for per-page "last updated" stamps; there is no
+# git in the image and no .git in the context, so turn that one feature off.
+ENV VITEPRESS_NO_GIT=1
+RUN npm run build:server \
+ && npm run build:web \
+ && cd docs && npm run build && cd .. \
+ && npm run compress
+
+RUN mkdir -p /tmp/wsr && chown -R router:router /app /tmp/wsr
+
+# Everything in the suite runs as a non-root user, which is what makes the
+# "reports the uid the process is running as" assertion meaningful.
+USER router
+
+CMD ["npx", "vitest", "run"]

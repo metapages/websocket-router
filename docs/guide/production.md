@@ -8,7 +8,7 @@ There is no authentication. Anyone with the name has full read and write access,
 forever, because names never expire.
 
 - Generate them with a CSPRNG: `crypto.randomUUID()` in a browser,
-  `crypto.randomUUID()` in Deno and Node, `secrets.token_urlsafe(32)` in Python.
+  `crypto.randomUUID()` in Node and the browser, `secrets.token_urlsafe(32)` in Python.
 - Never derive them from something enumerable — a user id, an email, an
   incrementing number, a date.
 - Remember they end up in URLs, so they leak through screenshots, screen shares,
@@ -23,7 +23,7 @@ transport detail rather than the security boundary.
 ## Do not put sensitive data on a channel
 
 Transport is TLS-encrypted end to end, but the router process sees plaintext and
-so does redis. For anything sensitive, encrypt in the client and let the router
+For anything sensitive, encrypt in the client and let the router
 move ciphertext it cannot read:
 
 ```js
@@ -61,7 +61,7 @@ setInterval(() => {
 
 Pointer moves, device orientation and animation frames all fire far faster than
 anyone can perceive. Coalesce to 10–20 Hz before sending. Every message crosses
-redis and is delivered to every peer, so the cost is multiplied by the number of
+is delivered to every peer, so the cost is multiplied by the number of
 listeners.
 
 ## Keep payloads small

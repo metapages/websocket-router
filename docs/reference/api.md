@@ -123,9 +123,9 @@ bridged onto the channel. See [metapages & metaframes](/guide/metapages).
 OK
 ```
 
-Liveness and readiness probe. Returns `200` whenever the process is serving,
-including when redis is unavailable — the server still routes between clients on
-the same instance in that state.
+Liveness and readiness probe. Returns `200` whenever the process is serving.
+Used by the deploy script's health gate, which rolls a release back if this
+does not answer.
 
 ## `GET /`
 

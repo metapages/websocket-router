@@ -1,0 +1,84 @@
+# The integration suite, in containers.
+#
+#   just test            everything except ACME
+#   just test-acme       the ACME suite, against pebble
+#   just test-all        both
+#
+# Running in a container is not incidental. Two requirements can only be
+# verified here: that the server works as a non-root user, and that
+# certificate issuance works against a real ACME server.
+
+name: websocket-router-test
+
+services:
+  # ---------------------------------------------------------------------
+  # The suite. Spawns real server processes, as a non-root user.
+  # ---------------------------------------------------------------------
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      # Asserted by the admin stats test: proves requirement 6 at runtime
+      # rather than just in the Dockerfile.
+      EXPECT_NON_ROOT: "1"
+      TEST_SERVER_LOGS: "${TEST_SERVER_LOGS:-0}"
+    command: ["npx", "vitest", "run", "test/integration"]
+
+  # ---------------------------------------------------------------------
+  # ACME. pebble is Let's Encrypt's own test ACME server; challtestsrv is
+  # the DNS server pebble resolves challenge domains through.
+  # ---------------------------------------------------------------------
+  acme-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    profiles: ["acme"]
+    depends_on:
+      pebble:
+        condition: service_started
+      challtestsrv:
+        condition: service_started
+    environment:
+      EXPECT_NON_ROOT: "1"
+      ACME_DIRECTORY_URL: https://pebble:14000/dir
+      CHALLTESTSRV_URL: http://challtestsrv:8055
+      # Pebble's management API, which serves the root that signs ISSUED
+      # certificates (pebble.minica.pem only signs pebble's own listener).
+      PEBBLE_MGMT_URL: https://pebble:15000
+      TEST_SERVER_LOGS: "${TEST_SERVER_LOGS:-0}"
+    # The server under test runs inside this container and listens on 0.0.0.0,
+    # so pointing the test domain at loopback lets the suite connect to it by
+    # name. That matters: it exercises SNI and real hostname verification
+    # against the issued certificate, rather than bypassing both by dialling
+    # an IP. pebble resolves the same name through challtestsrv to this
+    # container's routable address, which is a separate question.
+    extra_hosts:
+      - "router.test:127.0.0.1"
+    command: ["npx", "vitest", "run", "test/integration/acme.test.ts"]
+
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    profiles: ["acme"]
+    # Resolve challenge domains through challtestsrv, which the test points at
+    # its own container address. Without this pebble would try real DNS.
+    command:
+      - -config
+      - /pebble-config.json
+      - -dnsserver
+      - challtestsrv:8053
+    volumes:
+      - ./test/fixtures/pebble-config.json:/pebble-config.json:ro
+    environment:
+      # No artificial validation delay; the suite is slow enough already.
+      PEBBLE_VA_NOSLEEP: "1"
+      # Never fail a challenge at random. Pebble does this by default to
+      # catch clients that do not retry, which here would just be flake.
+      PEBBLE_WFE_NONCEREJECT: "0"
+
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
+    profiles: ["acme"]
+    # -defaultIPv4 is set at runtime by the test over the management API on
+    # :8055, because only the test knows its own container address.
+    command: ["-defaultIPv6", "", "-defaultIPv4", ""]

@@ -184,7 +184,7 @@ Remember to base64 the binary updates —
 ## Rate limiting yourself
 
 Nothing throttles you, so high-frequency sources should throttle themselves.
-Pointer moves at 60 Hz across ten peers is a lot of redis traffic for a cursor.
+Pointer moves at 60 Hz across ten peers is a lot of bandwidth for a cursor.
 
 ```js
 let queued = null;

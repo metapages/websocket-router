@@ -1,0 +1,15 @@
+# One host per line. Copy to deploy/hosts and edit.
+#
+# Each entry is an INDEPENDENT router with its own channel state. There is no
+# shared bus, so do not put several of these behind one hostname: clients
+# landing on different hosts would never hear each other. Give each its own
+# name and let clients pick one.
+#
+# Anything ssh accepts works: a hostname, an alias from ~/.ssh/config, or
+# user@host. deploy.sh connects as root.
+
+router1.example.com
+router2.example.com
+
+# An ssh alias is often easier, so the key and port live in ~/.ssh/config:
+# my-router-fra

@@ -1,0 +1,23 @@
+{
+  // Both @metapages packages ship .d.ts files but do not list them in their
+  // package.json `exports`, so bundler resolution cannot see them and every
+  // import silently degrades to `any`. The `paths` block below points at the
+  // declarations directly until upstream fixes the export map; Vite resolves
+  // the runtime code via `exports` as normal, so this affects types only.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@metapages/hash-query": ["./node_modules/@metapages/hash-query/dist/index.d.ts"],
+      "@metapages/metapage": ["./node_modules/@metapages/metapage/dist/index.d.ts"]
+    }
+  },
+  "include": ["web/**/*.ts"]
+}

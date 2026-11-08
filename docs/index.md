@@ -32,9 +32,9 @@ features:
     details: Strings in, the same strings out. JSON, CSV, base64, a single emoji — the router never parses, validates or transforms what you send.
     link: /reference/api
     linkText: The whole API
-  - icon: 🌍
-    title: Scales past one process
-    details: Instances share channels over redis pub/sub, so it does not matter which server your clients happen to land on. Add instances, the routing keeps working.
+  - icon: 🪶
+    title: One process, no broker
+    details: Channels live in memory and messages go straight from socket to socket. Nothing to provision, nothing between you and the peer, nothing to be down.
     link: /guide/architecture
     linkText: Architecture
   - icon: 🧩

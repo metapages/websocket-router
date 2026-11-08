@@ -1,0 +1,52 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e8;
+    --bg: #141414;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+#qrimage img {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.indicators {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  min-width: 2.5em;
+}
+
+.indicators > div {
+  min-width: 1em;
+  width: 1em;
+}
+
+#test {
+  padding: 0.5em;
+  font-size: 0.9em;
+}
+
+#test a {
+  color: inherit;
+}
