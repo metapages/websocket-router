@@ -265,6 +265,17 @@ const connectionsHtml = (channel: ChannelDetail, now: number): string => {
   );
 };
 
+/**
+ * The order the watch cap is applied in: busiest first, always.
+ *
+ * Deliberately not the display order. Reconciling against "most recent
+ * message" would drop a quiet channel off the end of the cap, which stops it
+ * reporting messages, which keeps it quiet -- sockets would churn on every
+ * poll and a channel could be starved of attention by having been quiet once.
+ */
+const byBusiest = (channels: ChannelDetail[]): ChannelDetail[] =>
+  [...channels].sort((a, b) => b.subscribers - a.subscribers || a.since - b.since);
+
 const sortChannels = (channels: ChannelDetail[]): ChannelDetail[] => {
   const mode = ($("sort") as HTMLSelectElement).value;
   const copy = [...channels];
@@ -343,7 +354,7 @@ const poll = async (): Promise<void> => {
     latest = data;
     clockSkewMs = Date.now() - data.serverTime;
     error.hidden = true;
-    reconcileWatchers(sortChannels(data.channels));
+    reconcileWatchers(byBusiest(data.channels));
     render();
   } catch (failure) {
     error.textContent = `Could not read the channel list: ${(failure as Error).message}`;
@@ -352,7 +363,7 @@ const poll = async (): Promise<void> => {
 };
 
 $("watch").addEventListener("change", () => {
-  if (latest) reconcileWatchers(sortChannels(latest.channels));
+  if (latest) reconcileWatchers(byBusiest(latest.channels));
   render();
 });
 $("sort").addEventListener("change", render);
