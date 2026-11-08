@@ -75,7 +75,24 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   say "building release ${RELEASE}"
   npm ci --no-audit --no-fund
   npm run build
-  (cd docs && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run build)
+  # `vitepress build` exits 0 even when server-side rendering throws, writing
+  # pages that are missing their nav, sidebar and cross-links. The only signal
+  # is on stdout, so it has to be read rather than trusted -- otherwise a docs
+  # site stripped of its navigation ships and the health gate, which only asks
+  # for /healthcheck, passes it. Observed once while changing docs/ dependency
+  # versions: 87 render errors, exit status 0, index.html written as usual.
+  (
+    cd docs
+    npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+    docs_log="$(mktemp)"
+    trap 'rm -f "${docs_log}"' EXIT
+    npm run build 2>&1 | tee "${docs_log}"
+    if grep -q "not properly injected" "${docs_log}"; then
+      bad "docs rendered with server-side rendering errors; refusing to ship them"
+      bad "check docs/ dependency resolution; rebuild locally with: just docs-build"
+      exit 1
+    fi
+  )
   # The docs are part of the deployment, and the precompressed variants have
   # to cover them too, so compress after they are built.
   npm run compress
@@ -103,7 +120,18 @@ TARBALL="$(mktemp -t wsr-release-XXXXXX).tar.gz"
 # COPYFILE_DISABLE and --no-xattrs stop macOS tar embedding
 # com.apple.provenance metadata, which GNU tar on the host warns about once
 # per file; those warnings interleave with the deploy's own output.
-COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "${TARBALL}" \
+#
+# The flag names differ between implementations: --no-mac-metadata exists only
+# on BSD tar (macOS), and GNU tar -- which is what a Linux CI runner has --
+# exits 64 on an option it does not recognise, failing the whole deploy. So
+# probe for each flag instead of assuming the local tar is the only one.
+TAR_FLAGS=()
+for flag in --no-xattrs --no-mac-metadata; do
+  if tar "${flag}" --version >/dev/null 2>&1; then
+    TAR_FLAGS+=("${flag}")
+  fi
+done
+COPYFILE_DISABLE=1 tar ${TAR_FLAGS[@]+"${TAR_FLAGS[@]}"} -czf "${TARBALL}" \
   dist \
   public \
   docs/.vitepress/dist \
