@@ -87,6 +87,11 @@ by both the HTTP stack and the websocket upgrade handler. Two reasons:
 - a name that means one thing over HTTP and another over a websocket is a
   trap, when the security model is that a channel name is a secret.
 
+`INSPECT_KEY`, when set, is reserved by the same check — the one prefix that
+is not a fixed string. Hence its 16-character minimum: a short key would be a
+plausible channel name, and reserving it would take that name away from
+whoever was using it. See [Connection inspector](/guide/inspector).
+
 Everything else — `GET /:channel` renders the channel page, `POST /:channel`
 broadcasts, a websocket upgrade joins.
 
@@ -101,6 +106,7 @@ broadcasts, a websocket upgrade joins.
 | `src/staticAssets.ts` | Static files, preferring precompressed variants. |
 | `src/channelPage.ts` | QR code injection into the built channel page. |
 | `src/admin/` | Panel API and session authentication. |
+| `src/inspect/` | The connection inspector and its key handling. |
 | `src/tls/` | ACME issuance, renewal, and on-disk certificate storage. |
 | `src/config.ts` | Boot-time configuration from the environment. |
 | `src/settings.ts` | Runtime settings the panel can change. |
@@ -108,12 +114,18 @@ broadcasts, a websocket upgrade joins.
 | `src/reserved.ts` | Paths that cannot be channels. |
 | `web/channel/` | The channel page and landing page bundles. |
 | `web/admin/` | The admin panel bundle. |
+| `web/inspect/` | The connection inspector bundle. |
 | `test/integration/` | Real processes, real sockets, real ACME. |
 
 ## The browser side
 
-Vite builds three bundles into `dist/web`, served under `/_/` with
+Vite builds four bundles into `dist/web`, served under `/_/` with
 content-hashed filenames and a one-year immutable cache.
+
+Note that the inspector's bundle is one of them: a public, cacheable asset.
+The secret that opens the inspector is therefore read from the URL at runtime
+rather than compiled in, because anything compiled in would be served to
+anyone who asked for the bundle.
 
 The channel page previously loaded `@metapages/*` and
 `reconnecting-websocket` from a CDN at runtime, which made every channel page

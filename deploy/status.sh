@@ -28,6 +28,8 @@ APP_USER="${APP_USER}"
 echo "  release:  \$(basename "\$(readlink -f "\${APP_ROOT}/current" 2>/dev/null)" 2>/dev/null || echo none)"
 echo "  node:     \$(node --version 2>/dev/null || echo missing)"
 echo "  systemd:  \$(systemctl is-active "pm2-\${APP_USER}" 2>/dev/null || echo inactive) / \$(systemctl is-enabled "pm2-\${APP_USER}" 2>/dev/null || echo disabled)"
+# Whether the inspector is on, never the key itself.
+echo "  inspect:  \$(grep -qE '^INSPECT_KEY=.+' "\${APP_ROOT}/env" 2>/dev/null && echo on || echo off)"
 echo "  uptime:   \$(uptime -p 2>/dev/null)"
 echo "  disk:     \$(df -h / | awk 'NR==2 {print \$4" free of "\$2}')"
 sudo -u "\${APP_USER}" -H pm2 jlist 2>/dev/null \

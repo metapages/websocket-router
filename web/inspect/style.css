@@ -1,0 +1,188 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg-soft: #f6f7f9;
+  --bg-code: #0f1116;
+  --fg: #16181d;
+  --fg-soft: #5c6370;
+  --line: #e3e6ea;
+  --accent: #1f6feb;
+  --danger: #c0392b;
+  --ok: #15803d;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1116;
+    --bg-soft: #161920;
+    --bg-code: #080a0e;
+    --fg: #e6e8ec;
+    --fg-soft: #9aa3b2;
+    --line: #262b36;
+    --accent: #58a6ff;
+    --danger: #f87171;
+    --ok: #4ade80;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 { font-size: 1.35rem; margin: 0; }
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.5rem;
+}
+
+header p { margin: 0.15rem 0 0; }
+
+.muted { color: var(--fg-soft); font-size: 0.85rem; }
+.footnote { margin-top: 2rem; max-width: 46rem; }
+
+.controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+
+.checkbox {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--fg-soft);
+}
+
+select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  color: var(--fg);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.error {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+}
+
+.channel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.channel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* The channel name is the title and the thing being looked up, so it is the
+   one element allowed to be long: break it rather than clip it. */
+.channel-head h2 {
+  font-size: 1rem;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.channel-head a { color: var(--accent); text-decoration: none; }
+.channel-head a:hover { text-decoration: underline; }
+
+.facts {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--fg-soft);
+  margin-top: 0.15rem;
+}
+
+.facts .pill {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+.last {
+  margin-top: 0.7rem;
+  background: var(--bg-code);
+  color: #e6e8ec;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 11rem;
+  overflow: auto;
+}
+
+.last .meta { color: #9aa3b2; }
+.last.idle { color: #9aa3b2; font-style: italic; }
+
+table.connections {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.7rem;
+  font-size: 0.78rem;
+}
+
+table.connections th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.5rem 0.2rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+table.connections td {
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+table.connections tr:last-child td { border-bottom: none; }
+
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--fg-soft);
+}

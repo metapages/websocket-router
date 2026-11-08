@@ -120,4 +120,6 @@ internet. Worth knowing:
   proxy `allow`/`deny` on the `/admin` prefix. The router does not do IP
   allowlisting itself.
 - The panel cannot read or write channel traffic. It has no route that
-  exposes a payload, and the logs it serves deliberately exclude them.
+  exposes a payload, and the logs it serves deliberately exclude them. The
+  [connection inspector](/guide/inspector) is the tool for that, behind its
+  own separate secret, and it can only read.

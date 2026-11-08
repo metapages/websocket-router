@@ -99,12 +99,13 @@ prefix on every payload.
 | `src/httpApp.ts` | HTTP routes, and the minimal port-80 redirect app |
 | `src/staticAssets.ts` | Static files, preferring precompressed variants |
 | `src/admin/` | Panel API and session authentication |
+| `src/inspect/` | Connection inspector at a secret path |
 | `src/tls/` | ACME issuance, renewal, certificate storage |
 | `src/config.ts` | Boot-time configuration from the environment |
 | `src/settings.ts` | Runtime settings the admin panel can change |
 | `src/logger.ts` | Rotated JSON logs plus a ring buffer for the panel |
 | `src/reserved.ts` | Paths that cannot be channels |
-| `web/` | Browser bundles: channel page, landing page, admin panel |
+| `web/` | Browser bundles: channel page, landing page, admin panel, inspector |
 | `docs/` | The vitepress site served at `/docs` |
 | `deploy/` | Host bootstrap, deploy, rollback, status |
 | `test/integration/` | Real processes, real sockets, real ACME |
@@ -116,6 +117,7 @@ prefix on every payload.
 | `GET` | `/` | Landing page |
 | `GET` | `/docs/*` | Documentation |
 | `GET` | `/admin` | [Admin panel](docs/guide/admin.md), if enabled |
+| `GET` | `/<INSPECT_KEY>` | [Connection inspector](docs/guide/inspector.md), if enabled |
 | `GET` | `/healthcheck` | `OK` |
 | `GET` | `/:channel` | Channel page — QR code plus a metaframe |
 | `POST` | `/:channel` | Broadcast the request body to all listeners |
@@ -123,7 +125,9 @@ prefix on every payload.
 
 `/admin`, `/docs`, `/healthcheck`, `/_` and `/.well-known` are reserved and
 can never be channel names — enabling the admin panel must not take a name
-somebody was already using.
+somebody was already using. `INSPECT_KEY`, when set, is reserved the same way,
+which is why it has a minimum length: a short key would be a plausible channel
+name to take.
 
 ## Development
 
@@ -225,6 +229,15 @@ Encrypt's staging directory first. Full lifecycle and troubleshooting in
 Set `ADMIN_PASSWORD` to enable `/admin`, where you can change the maximum
 message size live and read the logs. Unset, the whole subtree returns 404 —
 there is no default credential. See [Admin panel](docs/guide/admin.md).
+
+### Connection inspector
+
+Set `INSPECT_KEY` to serve a live view of what is connected at `/<that key>`:
+every channel with a connection, how long each socket has been up, its
+`Origin` and `User-Agent`, and the traffic as it arrives. The path is the
+whole credential — there is no login, and a wrong guess is served an ordinary
+channel page. Unset, the route does not exist. See [Connection
+inspector](docs/guide/inspector.md).
 
 ### Configuration
 

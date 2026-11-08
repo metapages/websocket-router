@@ -36,8 +36,12 @@ export class TestClient {
     url: string,
     label = "client",
     timeoutMs = 10_000,
+    // Handshake headers a browser would send. The `ws` client sends neither
+    // Origin nor User-Agent by default, so a test about what the server
+    // records from the handshake has to supply them.
+    headers?: Record<string, string>,
   ): Promise<TestClient> {
-    const socket = new WebSocket(url);
+    const socket = headers ? new WebSocket(url, { headers }) : new WebSocket(url);
     const client = new TestClient(socket, label);
 
     await new Promise<void>((resolve, reject) => {

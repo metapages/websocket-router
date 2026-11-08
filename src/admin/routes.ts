@@ -111,6 +111,11 @@ export const createAdminRouter = (deps: AdminDeps): Router => {
       // without shelling into the box.
       user: { uid: process.getuid?.() ?? null, gid: process.getgid?.() ?? null },
       tls: { enabled: config.tls.enabled, domains: config.tls.domains },
+      // Whether the inspector is on, never where it is. This exists so an
+      // operator can tell that a deployed INSPECT_KEY actually arrived --
+      // without it the only signal is a secret URL either working or 404ing,
+      // and a 404 looks identical to a typo in the key you are holding.
+      inspect: { enabled: config.inspectKey !== undefined },
     });
   });
 

@@ -24,6 +24,7 @@ type Stats = {
   pid: number;
   user: { uid: number | null; gid: number | null };
   tls: { enabled: boolean; domains: string[] };
+  inspect: { enabled: boolean };
 };
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -111,6 +112,7 @@ const renderStats = (stats: Stats) => {
     ["Bytes routed", bytes(stats.router.bytesRouted)],
     ["Memory (RSS)", bytes(stats.memory.rss)],
     ["TLS", stats.tls.enabled ? stats.tls.domains.join(", ") || "on" : "off"],
+    ["Inspector", stats.inspect.enabled ? "on" : "off"],
   ];
 
   $("stats").innerHTML = cards

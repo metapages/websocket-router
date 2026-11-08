@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
  *
  *   channel/  the page rendered at /<channel-name>
  *   admin/    the password-protected admin panel at /admin
+ *   inspect/  the connection inspector at /<INSPECT_KEY>
  *
  * Everything the browser needs is bundled. The previous Deno version loaded
  * @metapages/* and reconnecting-websocket from a CDN at runtime, which made
@@ -25,6 +26,7 @@ export default defineConfig({
         channel: resolve(import.meta.dirname, "web/channel/index.html"),
         landing: resolve(import.meta.dirname, "web/channel/landing.html"),
         admin: resolve(import.meta.dirname, "web/admin/index.html"),
+        inspect: resolve(import.meta.dirname, "web/inspect/index.html"),
       },
     },
   },
