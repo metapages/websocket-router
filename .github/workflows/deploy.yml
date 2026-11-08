@@ -39,23 +39,18 @@ permissions:
   contents: read
 
 jobs:
-  # Gate the deploy on the suite. Reusing the same containerised run as CI
-  # rather than trusting that the pull request checked it, because a direct
-  # push to main would otherwise reach production untested.
+  # Gate the deploy on the very jobs that gate a pull request, by calling the
+  # workflow that defines them instead of restating them. A second copy here
+  # would be free to drift from the checks that actually guard main, and the
+  # copy that drifts is the one nobody is watching.
+  #
+  # This runs the full set -- type check, build, integration suite and
+  # certificate issuance -- so a push to main is checked as thoroughly as the
+  # pull request that merged it. skip_tests exists for an urgent fix.
   test:
-    name: Integration suite
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    name: Tests
     if: ${{ !inputs.skip_tests }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: extractions/setup-just@v2
-      - name: Run the suite
-        run: just test
-      - name: Server output on failure
-        if: failure()
-        run: docker compose -f docker-compose.test.yml logs --no-color || true
+    uses: ./.github/workflows/test.yml
 
   deploy:
     name: Deploy
