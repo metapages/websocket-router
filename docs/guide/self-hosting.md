@@ -257,6 +257,8 @@ to get a real certificate.
 | `unauthorized` / wrong host | DNS does not resolve to this host yet, or still points somewhere else. |
 | `too many failed authorizations` | Rate limited. Wait it out, and use staging next time. |
 | Permission denied binding :80 | The systemd drop-in is missing. Re-run `bootstrap.sh`. |
+| Still serving the staging certificate | A valid certificate on disk is reused rather than reordered. Delete `${DATA_DIR}/acme/` and deploy again. |
+| An env change appears to do nothing | `systemctl restart` resurrects pm2's *saved* environment and ignores the env file. Deploy instead -- `deploy.sh` deletes and restarts the app so the env file wins. |
 
 Certificates and the ACME account key live in `${DATA_DIR}/acme/`, written
 `0600`. Back up that directory, or do not — losing it costs one fresh account
