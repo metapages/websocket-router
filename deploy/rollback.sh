@@ -36,6 +36,7 @@ for host in "${HOSTS[@]}"; do
 set -euo pipefail
 APP_ROOT="${APP_ROOT}"
 APP_USER="${APP_USER}"
+APP_NAME="${APP_NAME}"
 TARGET_RELEASE="${TARGET_RELEASE}"
 
 cd "\${APP_ROOT}/releases"
@@ -57,10 +58,13 @@ echo "  \${CURRENT} -> \${TARGET}"
 ln -sfn "\${APP_ROOT}/releases/\${TARGET}" "\${APP_ROOT}/current.new"
 mv -Tf "\${APP_ROOT}/current.new" "\${APP_ROOT}/current"
 
+# Delete before starting so \${APP_ROOT}/env is authoritative; pm2's
+# --update-env only adds variables, it never overwrites existing ones.
 sudo -u "\${APP_USER}" -H bash -lc "
   set -a; . '\${APP_ROOT}/env'; set +a
   cd '\${APP_ROOT}/current'
-  pm2 startOrReload ecosystem.config.cjs --update-env
+  pm2 delete '\${APP_NAME}' >/dev/null 2>&1 || true
+  pm2 start ecosystem.config.cjs
   pm2 save --force
 " >/dev/null
 

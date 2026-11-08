@@ -235,14 +235,20 @@ if ! sudo -u "\${APP_USER}" -H pm2 ping >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "  reloading pm2"
-# --update-env so edits to \${APP_ROOT}/env take effect on a plain deploy.
-# startOrReload handles both the first deploy and every later one.
+echo "  restarting pm2"
+# pm2's --update-env only ADDS variables to a running app's environment; it
+# never overwrites one that is already set. Editing an existing value in
+# \${APP_ROOT}/env -- TLS_ENABLED, PORT, APP_FQDN -- therefore had no effect
+# on a reload: pm2 kept serving the value captured at first start, silently.
+# Deleting the app first makes the env file authoritative. In fork mode with
+# one instance a pm2 reload is already a full restart, so this costs no extra
+# downtime.
 sudo -u "\${APP_USER}" -H bash -lc "
   set -euo pipefail
   set -a; . '\${APP_ROOT}/env'; set +a
   cd '\${APP_ROOT}/current'
-  pm2 startOrReload ecosystem.config.cjs --update-env
+  pm2 delete '\${APP_NAME}' >/dev/null 2>&1 || true
+  pm2 start ecosystem.config.cjs
   pm2 save --force
 " >/dev/null
 
@@ -287,10 +293,12 @@ if [[ "\${healthy}" != "1" ]]; then
         && "\${PREVIOUS}" == "\${APP_ROOT}/releases/"* ]]; then
     ln -sfn "\${PREVIOUS}" "\${APP_ROOT}/current.new"
     mv -Tf "\${APP_ROOT}/current.new" "\${APP_ROOT}/current"
+    # Same reason as the restart above: delete first so the env file wins.
     sudo -u "\${APP_USER}" -H bash -lc "
       set -a; . '\${APP_ROOT}/env'; set +a
       cd '\${APP_ROOT}/current'
-      pm2 startOrReload ecosystem.config.cjs --update-env
+      pm2 delete '\${APP_NAME}' >/dev/null 2>&1 || true
+      pm2 start ecosystem.config.cjs
       pm2 save --force
     " >/dev/null || true
     echo "  rolled back to \$(basename "\${PREVIOUS}")" >&2
