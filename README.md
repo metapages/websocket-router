@@ -233,9 +233,10 @@ there is no default credential. See [Admin panel](docs/guide/admin.md).
 ### Connection inspector
 
 Set `INSPECT_KEY` to serve a live view of what is connected at `/<that key>`:
-every channel with a connection, how long each socket has been up, its
-`Origin` and `User-Agent`, and the traffic as it arrives. The path is the
-whole credential — there is no login, and a wrong guess is served an ordinary
+a list of every channel with a connection, and — on clicking one — how long
+each socket has been up, its `Origin` and `User-Agent`, and the traffic as it
+arrives. Clicking is the only thing that subscribes. The path is the whole
+credential — there is no login, and a wrong guess is served an ordinary
 channel page. Unset, the route does not exist. See [Connection
 inspector](docs/guide/inspector.md).
 
