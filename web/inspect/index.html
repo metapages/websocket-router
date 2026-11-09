@@ -20,10 +20,6 @@
           <p class="muted" id="summary">loading…</p>
         </div>
         <div class="controls">
-          <label class="checkbox">
-            <input id="watch" type="checkbox" checked />
-            watch traffic
-          </label>
           <select id="sort">
             <option value="subscribers">busiest first</option>
             <option value="age">oldest first</option>
@@ -35,13 +31,18 @@
 
       <p id="error" class="error" role="alert" hidden></p>
 
+      <p class="muted hint">
+        Click a channel name to subscribe to it and watch its traffic. Nothing
+        is subscribed to until you do.
+      </p>
+
       <section id="channels"></section>
 
       <p class="muted footnote">
-        Every channel with at least one connection is listed. Messages are
-        read by subscribing to each channel as a read-only client: nothing is
-        buffered on the server, so this shows traffic from the moment the
-        inspector connected, not before it.
+        Every channel with at least one connection is listed. An opened
+        channel is read by subscribing to it as a read-only client: nothing is
+        buffered on the server, so you see traffic from the moment you opened
+        it, not before.
       </p>
     </main>
   </body>

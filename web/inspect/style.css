@@ -59,6 +59,7 @@ header p { margin: 0.15rem 0 0; }
 
 .muted { color: var(--fg-soft); font-size: 0.85rem; }
 .footnote { margin-top: 2rem; max-width: 46rem; }
+.hint { margin: 0 0 1rem; }
 
 .controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 
@@ -98,6 +99,8 @@ select {
   margin-bottom: 0.9rem;
 }
 
+.channel.open { border-color: var(--accent); }
+
 .channel-head {
   display: flex;
   justify-content: space-between;
@@ -111,12 +114,76 @@ select {
 .channel-head h2 {
   font-size: 1rem;
   margin: 0;
+  min-width: 0;
+}
+
+/* The name is the control: clicking it subscribes. Styled as text rather
+   than as a button so the list still reads as a list. */
+.toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font: inherit;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
   word-break: break-all;
 }
 
-.channel-head a { color: var(--accent); text-decoration: none; }
-.channel-head a:hover { text-decoration: underline; }
+.toggle:hover .name { color: var(--accent); text-decoration: underline; }
+.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.caret { color: var(--fg-soft); font-size: 0.75rem; }
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.head-actions a { color: var(--accent); text-decoration: none; font-size: 0.8rem; }
+.head-actions a:hover { text-decoration: underline; }
+
+/* Copy buttons. The payload and the connection rows are the two things an
+   operator wants out of this page and into somewhere else, and selecting
+   them by hand in a list that redraws itself is no way to do it. */
+.copy {
+  font: inherit;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  padding: 0 0.45rem;
+  color: var(--fg-soft);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy:hover { color: var(--accent); border-color: var(--accent); }
+.copy.done { color: var(--ok); border-color: var(--ok); }
+
+.pane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.pane-head .meta {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
 
 .facts {
   display: flex;
@@ -135,7 +202,7 @@ select {
 }
 
 .last {
-  margin-top: 0.7rem;
+  margin-top: 0.4rem;
   background: var(--bg-code);
   color: #e6e8ec;
   border-radius: 8px;
@@ -148,15 +215,21 @@ select {
   overflow: auto;
 }
 
-.last .meta { color: #9aa3b2; }
-.last.idle { color: #9aa3b2; font-style: italic; }
+.last.idle {
+  color: var(--fg-soft);
+  background: none;
+  font-style: italic;
+  padding-left: 0;
+}
 
 table.connections {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 0.7rem;
+  margin-top: 0.4rem;
   font-size: 0.78rem;
 }
+
+td.copy-cell { text-align: right; white-space: nowrap; }
 
 table.connections th {
   text-align: left;

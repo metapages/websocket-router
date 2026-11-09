@@ -74,15 +74,26 @@ again the moment the process restarts.
 
 ## What it shows
 
-One card per channel, busiest first:
+The page opens as a list of channel names and nothing else:
 
 | | |
 | --- | --- |
 | **Title** | the channel name — the thing a client connected to |
 | **up** | since the oldest connection on that channel arrived |
 | **connections** | how many sockets, excluding anyone watching |
-| **last message** | the most recent message seen *since you opened the page* |
-| **table** | per socket: id, how long it has been up, address, `Origin`, `User-Agent` |
+
+**Click a channel name to open it.** That is the only thing that ever
+subscribes, and it reveals:
+
+| | |
+| --- | --- |
+| **connections** | per socket: id, how long it has been up, address, `Origin`, `User-Agent` |
+| **last message** | the most recent message seen *since you opened that channel* |
+
+Nothing is subscribed to before you click. Listing is a cheap HTTP read;
+watching costs a websocket on a live channel, and opening one per listed
+channel on page load meant arriving at a diagnostic tool that had already
+connected to everything in production. Click the name again to disconnect.
 
 `Origin` and `User-Agent` are usually the answer to "what is this?". A browser
 tab opened from a metapage sends both; a script using a bare websocket library
@@ -91,11 +102,32 @@ sends neither, which is itself a clue.
 The socket id is the same short id that appears in the logs, so a connection
 in the inspector can be followed into `just logs <host>`.
 
+## Copying things out
+
+Every panel has a **copy** button, because that is what you came for:
+
+| Button | Copies |
+| --- | --- |
+| **copy key** | the channel name |
+| **copy** on a connection row | that socket as JSON — address, `Origin`, `User-Agent` |
+| **copy all as JSON** | every connection on the channel |
+| **copy payload** | the **whole** last message |
+
+A long payload is shown truncated and marked `shown truncated`; the copy
+button always gives the full thing, because it copies from what the page
+holds rather than from what it drew.
+
+Selecting by hand works too, and an open channel redraws about once a second
+to keep ages and messages current — so **while you have text selected the
+list stops redrawing**, and the header says so. Without that, a drag across a
+payload was cut short by the next redraw replacing the nodes the selection
+was anchored to, which is what made it grab the whole page instead.
+
 ## Messages are not stored
 
 The server keeps no message history — not for the inspector, not for anyone.
-The page subscribes to each listed channel over the normal websocket API and
-shows what arrives from that moment on. Open it after something interesting
+Opening a channel subscribes to it over the normal websocket API and shows
+what arrives from that moment on. Open it after something interesting
 happened and you have missed it.
 
 That is a deliberate trade. A buffer deep enough to be useful would have to be
@@ -125,8 +157,9 @@ and the subscriber count they would see does not change.
 
 ## Limits
 
-- **50 channels are watched at once**, the busiest first. The list itself goes
-  up to 200 channels; above that it says `list truncated`.
+- **The list shows up to 200 channels**; above that it says `list truncated`.
+  There is no cap on how many you may open at once, since each one is a
+  deliberate click.
 - **Each host is its own router.** The inspector shows the host you loaded it
   from, and nothing about the others. With more than one host in
   `DEPLOY_HOSTS`, open each one's own URL.
